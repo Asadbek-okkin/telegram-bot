@@ -1,42 +1,15 @@
 /* Mustaqil, doimiy ishlaydigan Telegram bot: pack-master yoki boshqa biror loyihaga bog'liq
-emas. Tugma bosilganda DARROV javob beradi (long-polling, getUpdates). */
-const https = require('https');
+emas. Tugma bosilganda DARROV javob beradi (long-polling, getUpdates). Holat/g'oyalar
+arxivi shu faylda; mebel-kanal boshqaruvi (post, autoposting, kalit so'z, guruh) - moderator.js. */
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const tg = require('./telegram-api');
+const moderator = require('./moderator');
 
-const TOKEN = process.env.PM_TELEGRAM_BOT_TOKEN;
 const CHAT_ID = '313364362';
 const OFFSET_FILE = path.join(os.homedir(), '.claude', 'pm-telegram-offset.txt');
 const IDEAS_FILE = path.join(__dirname, 'data', 'ideas.json');
-
-function apiCall(method, params) {
-  return new Promise((resolve, reject) => {
-    const data = JSON.stringify(params);
-    const req = https.request(
-      {
-        hostname: 'api.telegram.org',
-        path: `/bot${TOKEN}/${method}`,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) },
-      },
-      (res) => {
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end', () => {
-          try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { reject(e); }
-        });
-      }
-    );
-    req.on('error', reject);
-    req.write(data);
-    req.end();
-  });
-}
-
-function sendMessage(text) {
-  return apiCall('sendMessage', { chat_id: CHAT_ID, text }).catch((e) => console.error('Telegram send error:', e.message));
-}
 
 function getOffset() {
   try {
@@ -55,20 +28,6 @@ function setOffset(n) {
   } catch (e) {
     console.error('offset write error', e.message);
   }
-}
-
-function getUpdates(offset) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(`https://api.telegram.org/bot${TOKEN}/getUpdates?offset=${offset}&timeout=25`, (res) => {
-        let body = '';
-        res.on('data', (c) => (body += c));
-        res.on('end', () => {
-          try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
-        });
-      })
-      .on('error', reject);
-  });
 }
 
 function statusReport() {
@@ -101,43 +60,71 @@ function ideasArchiveReport() {
   return `G'oyalar ombori${skippedTxt} (✓ = Claude Code ko'rib chiqgan):\n` + lines.join('\n');
 }
 
+function mainKeyboard() {
+  return {
+    keyboard: [
+      ['📊 Holat', "💡 G'oya yozaman"],
+      ["📋 G'oyalar ombori"],
+      ...moderator.KEYBOARD_ROWS,
+    ],
+    resize_keyboard: true,
+  };
+}
+
 async function handleText(text) {
   console.log(`[telegram] received: ${text}`);
+  if (await moderator.handleText(text)) return;
   switch (text) {
     case '📊 Holat':
-      await sendMessage(`[Holat]\n${statusReport()}`);
+      await tg.sendMessage(CHAT_ID, `[Holat]\n${statusReport()}`);
       return;
     case "💡 G'oya yozaman":
-      await sendMessage("Mayli, g'oyangizni yozing - keyingi xabaringiz saqlanadi.");
+      await tg.sendMessage(CHAT_ID, "Mayli, g'oyangizni yozing - keyingi xabaringiz saqlanadi.");
       return;
     case "📋 G'oyalar ombori":
-      await sendMessage(ideasArchiveReport());
+      await tg.sendMessage(CHAT_ID, ideasArchiveReport());
       return;
     case '/start':
-      await sendMessage('Bot tayyor! Pastdagi tugmalardan foydalaning.');
+      await tg.sendMessage(CHAT_ID, 'Bot tayyor! Pastdagi tugmalardan foydalaning.', { reply_markup: mainKeyboard() });
       return;
     default:
       appendIdea(text);
-      await sendMessage(`Qabul qilindi va saqlandi: "${text}"`);
+      await tg.sendMessage(CHAT_ID, `Qabul qilindi va saqlandi: "${text}"`);
   }
 }
 
 async function pollLoop() {
-  if (!TOKEN) {
+  if (!tg.TOKEN) {
     console.log('Telegram bot: PM_TELEGRAM_BOT_TOKEN topilmadi - bot ochirilgan.');
     return;
   }
   console.log('Telegram bot: tinglash boshlandi (darrov javob beradi).');
+  await tg.sendMessage(
+    CHAT_ID,
+    "Bot yangilandi! Endi mebel kanali boshqaruvi ham shu botda: mavzu/post/autoposting/kalit so'z/guruhlar.",
+    { reply_markup: mainKeyboard() }
+  );
+  moderator.startAutopostLoop();
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
-      const resp = await getUpdates(offset);
+      const resp = await tg.getUpdates(offset);
       if (resp && resp.ok && resp.result) {
         for (const update of resp.result) {
           offset = Math.max(offset, update.update_id + 1);
-          if (update.message && String(update.message.chat.id) === CHAT_ID && update.message.text) {
-            await handleText(update.message.text);
+          if (update.callback_query) {
+            await moderator.handleCallback(update.callback_query);
+            continue;
+          }
+          const message = update.message;
+          if (!message) continue;
+          const chatIdStr = String(message.chat.id);
+          if (chatIdStr === CHAT_ID) {
+            if (message.photo) await moderator.handlePhoto(message);
+            else if (message.text) await handleText(message.text);
+          } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
+            await moderator.handleGroupMessage(message);
           }
         }
         setOffset(offset);

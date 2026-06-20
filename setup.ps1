@@ -1,9 +1,11 @@
 # Bu skript Telegram botni YANGI kompyuterda birinchi marta sozlaydi: tokenni saqlaydi,
 # Windows ishga tushganda bot avtomatik boshlanadigan qilib qo'yadi va botni hozir ham
 # ishga tushiradi.
-# Ishlatish: shu papkada -> powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "<BOT_TOKEN>"
+# Ishlatish: shu papkada -> powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "<BOT_TOKEN>" -GroqKey "<GROQ_API_KEY>"
 param(
-  [string]$Token = $env:PM_TELEGRAM_BOT_TOKEN
+  [string]$Token = $env:PM_TELEGRAM_BOT_TOKEN,
+  [string]$GroqKey = $env:PM_GROQ_API_KEY,
+  [string]$Kanal = $env:PM_KANAL
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +23,17 @@ if (-not $Token) {
 }
 [Environment]::SetEnvironmentVariable('PM_TELEGRAM_BOT_TOKEN', $Token, 'User')
 $env:PM_TELEGRAM_BOT_TOKEN = $Token
+
+if ($GroqKey) {
+  [Environment]::SetEnvironmentVariable('PM_GROQ_API_KEY', $GroqKey, 'User')
+  $env:PM_GROQ_API_KEY = $GroqKey
+} else {
+  Write-Host "DIQQAT: -GroqKey berilmagan - mavzu/post yaratish (AI) ishlamaydi, Holat/G'oyalar arxivi baribir ishlaydi." -ForegroundColor Yellow
+}
+if ($Kanal) {
+  [Environment]::SetEnvironmentVariable('PM_KANAL', $Kanal, 'User')
+  $env:PM_KANAL = $Kanal
+}
 
 New-Item -ItemType Directory -Path (Join-Path $botDir 'data') -Force | Out-Null
 

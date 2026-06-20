@@ -15,12 +15,14 @@ QADAMLAR:
    saytidan LTS versiyani o'rnating (oddiy "Next, Next, Finish").
 
 3. Shu papka ichida PowerShell oching va quyidagi buyruqni yozing
-   (TOKEN o'rniga botning haqiqiy tokenini qo'ying):
+   (TOKEN o'rniga botning haqiqiy tokenini, GROQ_KEY o'rniga Groq AI
+   kalitini qo'ying - GROQ_KEY ixtiyoriy, lekin mavzu/post yaratish
+   (AI) faqat shu kalit bo'lsa ishlaydi):
 
-       powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "TOKEN"
+       powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "TOKEN" -GroqKey "GROQ_KEY"
 
    Bu skript:
-   - Telegram bot tokenini saqlaydi
+   - Telegram bot tokeni va Groq AI kalitini saqlaydi
    - Kompyuter yonganda bot avtomatik ishga tushadigan qilib qo'yadi
      (Windows Startup papkasiga yorliq qo'yadi)
    - Botni hozir ham ishga tushiradi
@@ -28,9 +30,16 @@ QADAMLAR:
 4. Tayyor. Telegram botdagi "📊 Holat" tugmasini bosib tekshiring -
    shu kompyuter haqida darrov javob kelishi kerak.
 
-ESLATMA: data/ideas.json - bu hozirgi g'oyalar arxivi. Agar bu papkani
-boshqa kompyuterdan ko'chirib kelayotgan bo'lsangiz, shu faylni ham birga
-olib keling, aks holda yangi/bo'sh arxiv bilan boshlanadi.
+   Mebel kanali boshqaruvi ("✏️ Mavzu berish", "⏰ Autoposting" va h.k.)
+   ishlashi uchun bot @asadbek_Yusupoov kanaliga ADMIN qilib qo'shilgan
+   bo'lishi, kuzatiladigan guruhlarga A'ZO qilib qo'shilgan bo'lishi va
+   @BotFather'da shu bot uchun Privacy Mode O'CHIRILGAN (/setprivacy ->
+   Disable) bo'lishi kerak - aks holda guruh xabarlarini ko'ra olmaydi.
+
+ESLATMA: data/ideas.json - g'oyalar arxivi, data/moderator.json - mavzular
+ombori/statistika/kalit so'zlar/guruhlar. Agar bu papkani boshqa kompyuterdan
+ko'chirib kelayotgan bo'lsangiz, ikkalasini ham birga olib keling, aks holda
+yangi/bo'sh holatda boshlanadi.
 
 CLAUDE CODE BILAN ISHLATISH (ixtiyoriy): agar shu kompyuterda Claude Code
 ham ishlatilsa va ruxsat-so'rovlarini Telegram orqali olishni xohlasangiz,

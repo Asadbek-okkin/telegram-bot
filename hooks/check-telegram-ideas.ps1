@@ -71,7 +71,11 @@ if (Test-Path $ideasFile) {
 
 # Bot ishlamayotgan bo'lsa, shu yerda to'g'ridan-to'g'ri olingan free-text xabarlar ham
 # "g'oya" sifatida hisoblanadi (tugma matnlari bo'lmagan har qanday matn).
-$knownButtons = @('📊 Holat', "💡 G'oya yozaman", "📋 G'oyalar ombori", '/start')
+$knownButtons = @(
+  '📊 Holat', "💡 G'oya yozaman", "📋 G'oyalar ombori", '/start',
+  "✏️ Mavzu berish", '📦 Mavzular ombori', '⏰ Autoposting', '📊 Statistika',
+  "🔑 Kalit so'zlar", '👁 Guruhlar', '📝 Yangi post'
+)
 foreach ($t in $texts) {
   if ($knownButtons -notcontains $t) { $ideaTexts += $t }
 }

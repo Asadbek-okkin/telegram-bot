@@ -16,6 +16,8 @@ $logFile = Join-Path $botDir 'data\bot.log'
 New-Item -ItemType Directory -Path (Join-Path $botDir 'data') -Force | Out-Null
 
 [Environment]::SetEnvironmentVariable('PM_TELEGRAM_BOT_TOKEN', [Environment]::GetEnvironmentVariable('PM_TELEGRAM_BOT_TOKEN', 'User'), 'Process')
+[Environment]::SetEnvironmentVariable('PM_GROQ_API_KEY', [Environment]::GetEnvironmentVariable('PM_GROQ_API_KEY', 'User'), 'Process')
+[Environment]::SetEnvironmentVariable('PM_KANAL', [Environment]::GetEnvironmentVariable('PM_KANAL', 'User'), 'Process')
 
 while ($true) {
   "[$(Get-Date)] Bot ishga tushirilmoqda..." | Out-File -FilePath $logFile -Append -Encoding utf8
