@@ -1,0 +1,10 @@
+{
+  "name": "telegram-bot",
+  "version": "1.0.0",
+  "description": "Claude Code uchun mustaqil, doimiy ishlaydigan Telegram bot: holat/eslatma/g'oya arxivi va ruxsat-so'rovlariga javob.",
+  "private": true,
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  }
+}

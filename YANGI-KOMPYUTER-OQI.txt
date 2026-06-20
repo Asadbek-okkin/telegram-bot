@@ -1,0 +1,40 @@
+TELEGRAM BOTNI YANGI (DOIMIY YONIQ) KOMPYUTERGA O'RNATISH
+==================================================================
+
+Bu mustaqil loyiha - pack-master yoki boshqa biror loyihaga bog'liq emas.
+Maqsad: shu kompyuterni botning doimiy uyi qilib qo'yish, shunda u har
+doim yonib turadi va Telegram'dagi tugmalar/eslatmalar doim darrov javob
+beradi.
+
+QADAMLAR:
+
+1. Bu papkani kompyuterda doimiy turadigan joyga ko'chiring
+   (masalan: C:\telegram-bot).
+
+2. Agar bu kompyuterda Node.js o'rnatilmagan bo'lsa: https://nodejs.org
+   saytidan LTS versiyani o'rnating (oddiy "Next, Next, Finish").
+
+3. Shu papka ichida PowerShell oching va quyidagi buyruqni yozing
+   (TOKEN o'rniga botning haqiqiy tokenini qo'ying):
+
+       powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "TOKEN"
+
+   Bu skript:
+   - Telegram bot tokenini saqlaydi
+   - Kompyuter yonganda bot avtomatik ishga tushadigan qilib qo'yadi
+     (Windows Startup papkasiga yorliq qo'yadi)
+   - Botni hozir ham ishga tushiradi
+
+4. Tayyor. Telegram botdagi "📊 Holat" tugmasini bosib tekshiring -
+   shu kompyuter haqida darrov javob kelishi kerak.
+
+ESLATMA: data/ideas.json - bu hozirgi g'oyalar arxivi. Agar bu papkani
+boshqa kompyuterdan ko'chirib kelayotgan bo'lsangiz, shu faylni ham birga
+olib keling, aks holda yangi/bo'sh arxiv bilan boshlanadi.
+
+CLAUDE CODE BILAN ISHLATISH (ixtiyoriy): agar shu kompyuterda Claude Code
+ham ishlatilsa va ruxsat-so'rovlarini Telegram orqali olishni xohlasangiz,
+hooks/ papkasidagi ikki skriptni ~/.claude/settings.json'ga ulang (qarang:
+hooks/check-telegram-ideas.ps1 - SessionStart, hooks/telegram-permission.ps1
+- PermissionRequest). Bu ixtiyoriy - bot o'zi (tugmalar/eslatmalar) bu
+sozlamasiz ham to'liq ishlaydi.
