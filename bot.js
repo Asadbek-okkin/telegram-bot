@@ -8,12 +8,16 @@ const { execSync } = require('child_process');
 const tg = require('./telegram-api');
 const moderator = require('./moderator');
 const claude = require('./claude-api');
+const gemini = require('./gemini-api');
 
 const CHAT_ID = '313364362';
 const OFFSET_FILE = path.join(os.homedir(), '.claude', 'pm-telegram-offset.txt');
 const IDEAS_FILE = path.join(__dirname, 'data', 'ideas.json');
 
-const CLAUDE_SYSTEM_PROMPT = "Sen Asadbekning shaxsiy AI yordamchisisan - shu Telegram bot orqali suhbatlashasan. "
+// Gemini kaliti bo'lsa o'sha ishlatiladi (bepul), aks holda Claude (agar balans/kalit bo'lsa).
+const aiProvider = gemini.API_KEY ? gemini : claude;
+
+const AI_SYSTEM_PROMPT = "Sen Asadbekning shaxsiy AI yordamchisisan - shu Telegram bot orqali suhbatlashasan. "
   + "Foydalanuvchi qaysi tilda yozsa (o'zbek, rus yoki ingliz), o'sha tilda javob ber. "
   + "Aniq, foydali va samimiy javob ber, keraksiz cho'zib o'tirma. "
   + "Bu Telegram matn xabari - Markdown belgilaridan (**, *, #, backtick, ```) foydalanma, faqat oddiy matn yoz.";
@@ -100,7 +104,7 @@ async function handleAiChat(text) {
   conversation.push({ role: 'user', content: text });
   if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
   try {
-    const reply = await claude.chat(conversation, CLAUDE_SYSTEM_PROMPT);
+    const reply = await aiProvider.chat(conversation, AI_SYSTEM_PROMPT);
     conversation.push({ role: 'assistant', content: reply });
     if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
     await tg.sendMessage(CHAT_ID, reply);
