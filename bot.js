@@ -4,6 +4,7 @@ arxivi shu faylda; mebel-kanal boshqaruvi (post, autoposting, kalit so'z, guruh)
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execSync } = require('child_process');
 const tg = require('./telegram-api');
 const moderator = require('./moderator');
 const claude = require('./claude-api');
@@ -73,11 +74,26 @@ function mainKeyboard() {
   return {
     keyboard: [
       ['📊 Holat', "💡 G'oya yozaman"],
-      ["📋 G'oyalar ombori"],
+      ["📋 G'oyalar ombori", '🔄 Botni yangilash'],
       ...moderator.KEYBOARD_ROWS,
     ],
     resize_keyboard: true,
   };
+}
+
+async function handleSelfUpdate() {
+  await tg.sendMessage(CHAT_ID, "Yangilanish tekshirilmoqda (git pull)...");
+  try {
+    const output = execSync('git pull', { cwd: __dirname, encoding: 'utf8' });
+    if (/Already up to date/i.test(output)) {
+      await tg.sendMessage(CHAT_ID, `Yangilanish yo'q, bot allaqachon so'nggi versiyada.\n\n${output.trim()}`);
+      return;
+    }
+    await tg.sendMessage(CHAT_ID, `Yangilandi:\n${output.trim()}\n\nBot qayta ishga tushmoqda...`);
+    process.exit(0); // start-bot-loop.ps1 avtomatik qayta ishga tushiradi
+  } catch (e) {
+    await tg.sendMessage(CHAT_ID, `Yangilashda xato:\n${e.message}`);
+  }
 }
 
 async function handleAiChat(text) {
@@ -107,6 +123,9 @@ async function handleText(text) {
       return;
     case "📋 G'oyalar ombori":
       await tg.sendMessage(CHAT_ID, ideasArchiveReport());
+      return;
+    case '🔄 Botni yangilash':
+      await handleSelfUpdate();
       return;
     case '/start':
       await tg.sendMessage(CHAT_ID, 'Bot tayyor! Pastdagi tugmalardan foydalaning.', { reply_markup: mainKeyboard() });
