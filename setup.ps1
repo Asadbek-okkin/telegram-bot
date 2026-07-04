@@ -1,10 +1,11 @@
 # Bu skript Telegram botni YANGI kompyuterda birinchi marta sozlaydi: tokenni saqlaydi,
 # Windows ishga tushganda bot avtomatik boshlanadigan qilib qo'yadi va botni hozir ham
 # ishga tushiradi.
-# Ishlatish: shu papkada -> powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "<BOT_TOKEN>" -GroqKey "<GROQ_API_KEY>"
+# Ishlatish: shu papkada -> powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "<BOT_TOKEN>" -GroqKey "<GROQ_API_KEY>" -ClaudeKey "<ANTHROPIC_API_KEY>"
 param(
   [string]$Token = $env:PM_TELEGRAM_BOT_TOKEN,
   [string]$GroqKey = $env:PM_GROQ_API_KEY,
+  [string]$ClaudeKey = $env:PM_ANTHROPIC_API_KEY,
   [string]$Kanal = $env:PM_KANAL
 )
 
@@ -29,6 +30,13 @@ if ($GroqKey) {
   $env:PM_GROQ_API_KEY = $GroqKey
 } else {
   Write-Host "DIQQAT: -GroqKey berilmagan - mavzu/post yaratish (AI) ishlamaydi, Holat/G'oyalar arxivi baribir ishlaydi." -ForegroundColor Yellow
+}
+
+if ($ClaudeKey) {
+  [Environment]::SetEnvironmentVariable('PM_ANTHROPIC_API_KEY', $ClaudeKey, 'User')
+  $env:PM_ANTHROPIC_API_KEY = $ClaudeKey
+} else {
+  Write-Host "DIQQAT: -ClaudeKey berilmagan - AI suhbat (Claude) ishlamaydi, Holat/G'oyalar arxivi baribir ishlaydi." -ForegroundColor Yellow
 }
 if ($Kanal) {
   [Environment]::SetEnvironmentVariable('PM_KANAL', $Kanal, 'User')

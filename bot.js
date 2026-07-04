@@ -6,10 +6,19 @@ const path = require('path');
 const os = require('os');
 const tg = require('./telegram-api');
 const moderator = require('./moderator');
+const claude = require('./claude-api');
 
 const CHAT_ID = '313364362';
 const OFFSET_FILE = path.join(os.homedir(), '.claude', 'pm-telegram-offset.txt');
 const IDEAS_FILE = path.join(__dirname, 'data', 'ideas.json');
+
+const CLAUDE_SYSTEM_PROMPT = "Sen Asadbekning shaxsiy AI yordamchisisan - shu Telegram bot orqali suhbatlashasan. "
+  + "Foydalanuvchi qaysi tilda yozsa (o'zbek, rus yoki ingliz), o'sha tilda javob ber. "
+  + "Aniq, foydali va samimiy javob ber, keraksiz cho'zib o'tirma. "
+  + "Bu Telegram matn xabari - Markdown belgilaridan (**, *, #, backtick, ```) foydalanma, faqat oddiy matn yoz.";
+const HISTORY_MAX = 20; // oxirgi shuncha xabar (user+assistant) xotirada saqlanadi
+let conversation = [];
+let awaitingIdea = false;
 
 function getOffset() {
   try {
@@ -71,6 +80,20 @@ function mainKeyboard() {
   };
 }
 
+async function handleAiChat(text) {
+  conversation.push({ role: 'user', content: text });
+  if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
+  try {
+    const reply = await claude.chat(conversation, CLAUDE_SYSTEM_PROMPT);
+    conversation.push({ role: 'assistant', content: reply });
+    if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
+    await tg.sendMessage(CHAT_ID, reply);
+  } catch (e) {
+    console.error('Claude chat error:', e.message);
+    await tg.sendMessage(CHAT_ID, "Kechirasiz, hozir AI bilan bog'lanib bo'lmadi. Birozdan keyin qayta urinib ko'ring.");
+  }
+}
+
 async function handleText(text) {
   console.log(`[telegram] received: ${text}`);
   if (await moderator.handleText(text)) return;
@@ -79,6 +102,7 @@ async function handleText(text) {
       await tg.sendMessage(CHAT_ID, `[Holat]\n${statusReport()}`);
       return;
     case "💡 G'oya yozaman":
+      awaitingIdea = true;
       await tg.sendMessage(CHAT_ID, "Mayli, g'oyangizni yozing - keyingi xabaringiz saqlanadi.");
       return;
     case "📋 G'oyalar ombori":
@@ -87,10 +111,14 @@ async function handleText(text) {
     case '/start':
       await tg.sendMessage(CHAT_ID, 'Bot tayyor! Pastdagi tugmalardan foydalaning.', { reply_markup: mainKeyboard() });
       return;
-    default:
-      appendIdea(text);
-      await tg.sendMessage(CHAT_ID, `Qabul qilindi va saqlandi: "${text}"`);
   }
+  if (awaitingIdea) {
+    awaitingIdea = false;
+    appendIdea(text);
+    await tg.sendMessage(CHAT_ID, `Qabul qilindi va saqlandi: "${text}"`);
+    return;
+  }
+  await handleAiChat(text);
 }
 
 async function pollLoop() {
@@ -101,7 +129,7 @@ async function pollLoop() {
   console.log('Telegram bot: tinglash boshlandi (darrov javob beradi).');
   await tg.sendMessage(
     CHAT_ID,
-    "Bot yangilandi! Endi mebel kanali boshqaruvi ham shu botda: mavzu/post/autoposting/kalit so'z/guruhlar.",
+    "Bot yangilandi! Endi botga oddiy xabar yozsangiz Claude AI javob beradi. Mebel kanali boshqaruvi ham shu botda: mavzu/post/autoposting/kalit so'z/guruhlar.",
     { reply_markup: mainKeyboard() }
   );
   moderator.startAutopostLoop();

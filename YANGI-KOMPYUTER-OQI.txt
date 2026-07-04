@@ -16,13 +16,15 @@ QADAMLAR:
 
 3. Shu papka ichida PowerShell oching va quyidagi buyruqni yozing
    (TOKEN o'rniga botning haqiqiy tokenini, GROQ_KEY o'rniga Groq AI
-   kalitini qo'ying - GROQ_KEY ixtiyoriy, lekin mavzu/post yaratish
-   (AI) faqat shu kalit bo'lsa ishlaydi):
+   kalitini, CLAUDE_KEY o'rniga Anthropic (Claude) API kalitini qo'ying -
+   GROQ_KEY va CLAUDE_KEY ixtiyoriy: GROQ_KEY bo'lmasa mavzu/post yaratish
+   ishlamaydi, CLAUDE_KEY bo'lmasa botga yozgan xabarlarga AI suhbat
+   javobi kelmaydi):
 
-       powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "TOKEN" -GroqKey "GROQ_KEY"
+       powershell -ExecutionPolicy Bypass -File setup.ps1 -Token "TOKEN" -GroqKey "GROQ_KEY" -ClaudeKey "CLAUDE_KEY"
 
    Bu skript:
-   - Telegram bot tokeni va Groq AI kalitini saqlaydi
+   - Telegram bot tokeni, Groq AI va Claude API kalitlarini saqlaydi
    - Kompyuter yonganda bot avtomatik ishga tushadigan qilib qo'yadi
      (Windows Startup papkasiga yorliq qo'yadi)
    - Botni hozir ham ishga tushiradi

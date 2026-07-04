@@ -17,6 +17,7 @@ New-Item -ItemType Directory -Path (Join-Path $botDir 'data') -Force | Out-Null
 
 [Environment]::SetEnvironmentVariable('PM_TELEGRAM_BOT_TOKEN', [Environment]::GetEnvironmentVariable('PM_TELEGRAM_BOT_TOKEN', 'User'), 'Process')
 [Environment]::SetEnvironmentVariable('PM_GROQ_API_KEY', [Environment]::GetEnvironmentVariable('PM_GROQ_API_KEY', 'User'), 'Process')
+[Environment]::SetEnvironmentVariable('PM_ANTHROPIC_API_KEY', [Environment]::GetEnvironmentVariable('PM_ANTHROPIC_API_KEY', 'User'), 'Process')
 [Environment]::SetEnvironmentVariable('PM_KANAL', [Environment]::GetEnvironmentVariable('PM_KANAL', 'User'), 'Process')
 
 while ($true) {
