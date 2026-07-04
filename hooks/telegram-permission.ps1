@@ -49,6 +49,37 @@ function Get-StoredOffset {
   return $offset
 }
 
+# --- IDLE GATE ---
+# Foydalanuvchi hozir kompyuter oldida FAOL bo'lsa (oxirgi harakatdan $idleThresholdMin
+# daqiqadan kam vaqt o'tgan), Telegram'ni butunlay o'tkazib yuboramiz va exit 0 qilamiz -
+# Claude Code darhol VS'da oddiy ruxsat tugmalarini ko'rsatadi (telefon bezovta qilinmaydi).
+# Faqat foydalanuvchi 30+ daqiqa harakatsiz (kompyuter oldida bo'lmasa) Telegram'ga yuboriladi.
+# Ostonani o'zgartirish: $env:PM_TELEGRAM_IDLE_MIN (masalan "15").
+$idleThresholdMin = 30
+if ($env:PM_TELEGRAM_IDLE_MIN) { $tmpMin = 0; if ([int]::TryParse($env:PM_TELEGRAM_IDLE_MIN, [ref]$tmpMin)) { $idleThresholdMin = $tmpMin } }
+try {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace Inok {
+  public static class IdleHelper {
+    [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+    [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+    public static uint IdleMs() {
+      LASTINPUTINFO l = new LASTINPUTINFO();
+      l.cbSize = (uint)Marshal.SizeOf(l);
+      GetLastInputInfo(ref l);
+      return ((uint)Environment.TickCount - l.dwTime);
+    }
+  }
+}
+'@ -ErrorAction SilentlyContinue
+  $idleMin = [Inok.IdleHelper]::IdleMs() / 60000.0
+  if ($idleMin -lt $idleThresholdMin) { exit 0 }
+} catch {
+  # Idle aniqlab bo'lmasa, xavfsiz standart: eski xatti-harakat (Telegram'ga yuborishda davom etamiz).
+}
+
 $msgText = "RUXSAT SO'RALMOQDA ($projectName)`nAsbob: $toolName`n$toolInputStr`n`nJavob: HA (ruxsat) yoki YO'Q (rad) deb yozing. $waitSeconds soniya ichida javob bo'lmasa, kompyuterda oddiy so'rov ko'rinadi."
 try {
   $sendBody = @{ chat_id = $chatId; text = $msgText } | ConvertTo-Json
