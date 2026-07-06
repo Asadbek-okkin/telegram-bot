@@ -34,7 +34,6 @@ const DEFAULTS = {
 };
 
 const KEYBOARD_ROWS = [
-  ['✏️ Mavzu berish', '📦 Mavzular ombori'],
   ['⏰ Autoposting', '📊 Statistika'],
   ["🔑 Kalit so'zlar", '👁 Guruhlar'],
   ['📝 Yangi post'],
