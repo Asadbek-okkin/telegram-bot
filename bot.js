@@ -187,8 +187,35 @@ async function pollLoop() {
   }
 }
 
+// Ko'chish (2026-10-27): bot RDPWS2019 (Windows) dan Hetzner serverga ko'chdi. Windows nusxasi "Botni yangilash"
+// dan keyin shu yerga keladi: ma'lumotini yangi serverga yuboradi va tinglamaydi — bitta tokenni ikki nusxa
+// tinglasa, Telegram 409 xato beradi va xabarlar yo'qoladi.
+async function windowsdanKochish() {
+  const crypto = require('crypto');
+  const https = require('https');
+  const files = {};
+  for (const f of ['moderator.json', 'ideas.json']) {
+    try { files[f] = fs.readFileSync(path.join(__dirname, 'data', f), 'utf8'); } catch {}
+  }
+  try { files.offset = fs.readFileSync(OFFSET_FILE, 'utf8'); } catch {}
+  const body = JSON.stringify({ files, kompyuter: os.hostname() });
+  const kalit = crypto.createHash('sha256').update('kochish|' + (process.env.PM_TELEGRAM_BOT_TOKEN || '')).digest('hex');
+  const yubor = () => new Promise((resolve) => {
+    const req = https.request('https://inok.uz/claude-bot-kochish/', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-kalit': kalit, 'content-length': Buffer.byteLength(body) }, timeout: 30000,
+    }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => req.destroy());
+    req.end(body);
+  });
+  for (let i = 0; i < 60 && !(await yubor()); i++) await new Promise((r) => setTimeout(r, 30000));
+  try { await tg.sendMessage(CHAT_ID, `Bot ${os.hostname()} dan yangi serverga ko'chirildi, bu nusxa to'xtadi.`); } catch {}
+  setInterval(() => {}, 1 << 30); // jim turadi: start-bot-loop.ps1 qayta-qayta yoqmasin
+}
+
 if (require.main === module) {
-  pollLoop();
+  if (process.platform === 'win32' && fs.existsSync(path.join(__dirname, 'KOCHDI'))) windowsdanKochish();
+  else pollLoop();
 }
 
 module.exports = { pollLoop };
