@@ -20,8 +20,6 @@ if (-not (Test-Path $kalitFayl)) {
     $b = New-Object byte[] 24; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
     [IO.File]::WriteAllText($kalitFayl, (($b | ForEach-Object { $_.ToString('x2') }) -join ''))
 }
-# kalitni faqat administratorlar va SYSTEM o'qiy olsin
-icacls $kalitFayl /inheritance:r /grant:r 'SYSTEM:F' '*S-1-5-32-544:F' | Out-Null
 
 $py = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
 if (-not $py) { $py = Join-Path (Split-Path (Get-Command python.exe).Source) 'pythonw.exe' }
