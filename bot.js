@@ -7,6 +7,7 @@ const os = require('os');
 const { execSync } = require('child_process');
 const tg = require('./telegram-api');
 const moderator = require('./moderator');
+const kompyuter = require('./kompyuter');
 const claude = require('./claude-api');
 const gemini = require('./gemini-api');
 
@@ -78,6 +79,7 @@ function mainKeyboard() {
   return {
     keyboard: [
       ['📊 Holat', "💡 G'oya yozaman"],
+      ...kompyuter.KEYBOARD_ROWS,
       ["📋 G'oyalar ombori", '🔄 Botni yangilash'],
       ...moderator.KEYBOARD_ROWS,
     ],
@@ -116,6 +118,7 @@ async function handleAiChat(text) {
 
 async function handleText(text) {
   console.log(`[telegram] received: ${text}`);
+  if (await kompyuter.handleText(CHAT_ID, text)) return;
   if (await moderator.handleText(text)) return;
   switch (text) {
     case '📊 Holat':
@@ -156,6 +159,7 @@ async function pollLoop() {
     { reply_markup: mainKeyboard() }
   );
   moderator.startAutopostLoop();
+  kompyuter.startKuzatuv(CHAT_ID);
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -165,7 +169,9 @@ async function pollLoop() {
         for (const update of resp.result) {
           offset = Math.max(offset, update.update_id + 1);
           if (update.callback_query) {
-            await moderator.handleCallback(update.callback_query);
+            const cq = update.callback_query;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await kompyuter.handleCallback(cq))) continue;
+            await moderator.handleCallback(cq);
             continue;
           }
           const message = update.message;
