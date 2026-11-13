@@ -201,6 +201,7 @@ async function handleCallback(cq) {
 // Har 30 s: yoqildi / o'chdi bo'lsa xabar beradi
 async function tekshir() {
   const yoniq = yoniqmi() && !!pc;
+  console.log(`[kompyuter] yoniq=${yoniq} oldingi=${oxirgiYoniq} kutayotgan=${kutayotganlar.size} jim=${Math.round((Date.now() - oxirgiAloqa) / 1000)}s`);
   if (oxirgiYoniq !== null && yoniq !== oxirgiYoniq) {
     if (yoniq) {
       const izoh = yakshanbami() ? "\n\nBugun yakshanba — kerak bo'lmasa o'chirib qo'ying." : '';
