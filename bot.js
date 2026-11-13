@@ -10,6 +10,7 @@ const moderator = require('./moderator');
 const kompyuter = require('./kompyuter');
 const claude = require('./claude-api');
 const gemini = require('./gemini-api');
+const bazisShifr = require('./bazis-shifr');
 
 const CHAT_ID = '313364362';
 const OFFSET_FILE = path.join(os.homedir(), '.claude', 'pm-telegram-offset.txt');
@@ -178,6 +179,7 @@ async function pollLoop() {
           if (!message) continue;
           const chatIdStr = String(message.chat.id);
           if (chatIdStr === CHAT_ID) {
+            if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) continue;
             if (message.photo) await moderator.handlePhoto(message);
             else if (message.text) await handleText(message.text);
           } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
