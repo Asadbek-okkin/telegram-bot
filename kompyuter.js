@@ -45,7 +45,8 @@ function holatMatni() {
   if (!PC_KALIT) return "Kompyuter boshqaruvi sozlanmagan (serverda PC_KALIT yo'q).";
   if (!yoniqmi() || !pc) {
     const oxirgi = oxirgiAloqa ? `\nOxirgi aloqa: ${toshkentVaqti(oxirgiAloqa)}` : '';
-    return `🔴 Kompyuter O'CHIQ (yoki internetga ulanmagan).${oxirgi}`;
+    const uyg = uygotuvchiUlanganmi() ? "\n⚡ Uyg'otuvchi ulangan — yoqish mumkin." : "\n⚠️ Uyg'otuvchi (192.168.1.68) ulanmagan — yoqish ishlamasligi mumkin.";
+    return `🔴 Kompyuter O'CHIQ (yoki internetga ulanmagan).${oxirgi}${uyg}`;
   }
   // agent so'rovi kelganidan beri o'tgan vaqtni ham qo'shamiz
   const yoniqS = pc.yoniq_s + Math.floor((Date.now() - pc._olingan) / 1000);
@@ -58,8 +59,25 @@ function holatMatni() {
   return m;
 }
 
+// ---------------------------------------------------------------- yoqish (Wake-on-LAN)
+// Server ofis tarmog'ida emas, shuning uchun o'zi "uyg'ot" signalini yubora olmaydi. Ofisdagi doim yoqiq
+// kompyuter (192.168.1.68, Jarvis uyg'otuvchisi) har 15 s da POST /uygotuvchi so'raydi; tugma bosilgan
+// bo'lsa {uygot:true} oladi va tarmoqqa Wake-on-LAN paketini yuboradi.
+let uygotishSorovi = null; // {vaqt, chatId, msgId}
+let oxirgiUygotuvchi = 0; // uyg'otuvchi oxirgi marta qachon so'radi
+const UYGOTISH_MUDDAT_MS = 3 * 60 * 1000;
+
+function uygotuvchiUlanganmi() {
+  return Date.now() - oxirgiUygotuvchi < 60 * 1000;
+}
+
 function holatTugmalari() {
-  if (!yoniqmi() || !pc) return { inline_keyboard: [[{ text: '🔄 Qayta tekshirish', callback_data: 'pc:yangila' }]] };
+  if (!yoniqmi() || !pc) {
+    return { inline_keyboard: [
+      [{ text: '⚡ Kompyuterni yoqish', callback_data: 'pc:yoq' }],
+      [{ text: '🔄 Qayta tekshirish', callback_data: 'pc:yangila' }],
+    ] };
+  }
   const qator = pc.ochirish
     ? [{ text: "✖ O'chirishni bekor qilish", callback_data: 'pc:bekor' }]
     : [{ text: "⏻ O'chirish", callback_data: 'pc:ochir?' }];
@@ -122,6 +140,25 @@ function kalitTogri(berilgan) {
 
 function serverniBoshla() {
   const srv = http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url.replace(/\/+$/, '').endsWith('/uygotuvchi')) {
+      if (!kalitTogri(req.headers['x-kalit'])) { res.writeHead(403); return res.end(); }
+      oxirgiUygotuvchi = Date.now();
+      let uygot = false;
+      if (uygotishSorovi && Date.now() - uygotishSorovi.vaqt < UYGOTISH_MUDDAT_MS) {
+        uygot = true;
+        const s = uygotishSorovi;
+        uygotishSorovi = null;
+        tg.editMessageText(s.chatId, s.msgId, "⚡ Uyg'otish signali yuborildi. Kompyuter 1-2 daqiqada yonadi — yonganda bot o'zi xabar beradi.")
+          .catch(() => {});
+        setTimeout(() => {
+          if (!(yoniqmi() && pc)) {
+            tg.sendMessage(s.chatId, "⚠️ Kompyuter 4 daqiqada yonmadi. BIOS'da Wake on LAN yoqilganini tekshiring.", { reply_markup: holatTugmalari() }).catch(() => {});
+          }
+        }, 4 * 60 * 1000);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ uygot }));
+    }
     if (req.method !== 'POST' || !req.url.replace(/\/+$/, '').endsWith('/aloqa')) {
       res.writeHead(404); return res.end();
     }
@@ -173,6 +210,17 @@ async function handleCallback(cq) {
   if (data === 'pc:yangila') {
     await tg.answerCallbackQuery(cq.id, { text: yoniqmi() ? 'Yoniq' : "O'chiq" });
     await tahrir(holatMatni(), holatTugmalari());
+  } else if (data === 'pc:yoq') {
+    if (yoniqmi() && pc) {
+      await tg.answerCallbackQuery(cq.id, { text: 'Kompyuter allaqachon yoniq' });
+      await tahrir(holatMatni(), holatTugmalari());
+      return true;
+    }
+    await tg.answerCallbackQuery(cq.id, { text: "Yoqish buyrug'i berildi" });
+    uygotishSorovi = { vaqt: Date.now(), chatId, msgId };
+    await tahrir(uygotuvchiUlanganmi()
+      ? "⏳ Yoqish buyrug'i berildi — uyg'otuvchi 15 soniya ichida signal yuboradi..."
+      : "⏳ Yoqish buyrug'i berildi, lekin uyg'otuvchi (192.168.1.68) hozir ulanmagan. U ulanishi bilan (3 daqiqa ichida) signal yuboriladi.");
   } else if (data === 'pc:ochir?') {
     await tg.answerCallbackQuery(cq.id);
     await tahrir("Kompyuter o'chirilsinmi?\nOchiq dasturlardagi saqlanmagan ishlar yo'qoladi.", {
