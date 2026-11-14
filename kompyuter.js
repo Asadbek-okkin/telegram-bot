@@ -46,7 +46,7 @@ function holatMatni() {
   if (!yoniqmi() || !pc) {
     const oxirgi = oxirgiAloqa ? `\nOxirgi aloqa: ${toshkentVaqti(oxirgiAloqa)}` : '';
     const uyg = uygotuvchiUlanganmi() ? "\n⚡ Uyg'otuvchi ulangan — yoqish mumkin." : "\n⚠️ Uyg'otuvchi (192.168.1.68) ulanmagan — yoqish ishlamasligi mumkin.";
-    return `🔴 Kompyuter O'CHIQ (yoki internetga ulanmagan).${oxirgi}${uyg}`;
+    return `🔴 Kompyuter O'CHIQ (yoki internetga ulanmagan).${oxirgi}${uyg}${ikkinchiKompMatni()}`;
   }
   // agent so'rovi kelganidan beri o'tgan vaqtni ham qo'shamiz
   const yoniqS = pc.yoniq_s + Math.floor((Date.now() - pc._olingan) / 1000);
@@ -56,7 +56,7 @@ function holatMatni() {
     + `Yoqilgan: ${pc.boshlangan} (${davomiylik(yoniqS)} oldin)\n`
     + `Windows'ga kirgan: ${kirgan || 'hech kim (kirish oynasida turibdi)'}`;
   if (pc.ochirish) m += `\n\n⏻ O'chirish rejalashtirilgan — ${Math.max(0, pc.ochirish - Math.floor(Date.now() / 1000))} soniyadan keyin.`;
-  return m;
+  return m + ikkinchiKompMatni();
 }
 
 // ---------------------------------------------------------------- yoqish (Wake-on-LAN)
@@ -67,8 +67,18 @@ let uygotishSorovi = null; // {vaqt, chatId, msgId}
 let oxirgiUygotuvchi = 0; // uyg'otuvchi oxirgi marta qachon so'radi
 const UYGOTISH_MUDDAT_MS = 3 * 60 * 1000;
 
+const UYGOTUVCHI_JIM_MS = 3 * 60 * 1000; // shuncha jim bo'lsa - doim yoqiq kompyuter bilan aloqa yo'q
+let oxirgiUygotuvchiHolat = null;
+
 function uygotuvchiUlanganmi() {
-  return Date.now() - oxirgiUygotuvchi < 60 * 1000;
+  return Date.now() - oxirgiUygotuvchi < UYGOTUVCHI_JIM_MS;
+}
+
+function ikkinchiKompMatni() {
+  if (!oxirgiUygotuvchi) return "\n\n🖧 Doim yoqiq kompyuter (192.168.1.68): hali ulanmagan.";
+  return uygotuvchiUlanganmi()
+    ? "\n\n🖧 Doim yoqiq kompyuter (192.168.1.68): 🟢 aloqa bor"
+    : `\n\n🖧 Doim yoqiq kompyuter (192.168.1.68): 🔴 aloqa yo'q (oxirgi: ${toshkentVaqti(oxirgiUygotuvchi)})`;
 }
 
 function holatTugmalari() {
@@ -259,6 +269,16 @@ async function tekshir() {
     }
   }
   oxirgiYoniq = yoniq;
+
+  // Doim yoqiq kompyuter (192.168.1.68, uyg'otuvchi) bilan aloqa uzilsa / tiklansa - bir marta xabar
+  const ulangan = oxirgiUygotuvchi ? uygotuvchiUlanganmi() : null;
+  if (ulangan !== null && oxirgiUygotuvchiHolat !== null && ulangan !== oxirgiUygotuvchiHolat) {
+    await tg.sendMessage(CHAT_ID, ulangan
+      ? `🖧 Doim yoqiq kompyuter (192.168.1.68) bilan aloqa TIKLANDI (${toshkentVaqti()}).`
+      : `⚠️ Doim yoqiq kompyuter (192.168.1.68) bilan aloqa UZILDI (oxirgi: ${toshkentVaqti(oxirgiUygotuvchi)}).\n`
+        + "U o'chgan, interneti uzilgan yoki uyg'otuvchi dasturi to'xtagan. Shu paytda kompyuterni masofadan yoqib bo'lmaydi.");
+  }
+  if (ulangan !== null) oxirgiUygotuvchiHolat = ulangan;
 }
 
 function startKuzatuv(chatId) {
