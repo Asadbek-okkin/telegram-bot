@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const tg = require('./telegram-api');
 
 const PC_KALIT = process.env.PC_KALIT || '';
+const DASTUR_NOMI = { yandex: 'Yandex Brauzer', telegram: 'Telegram', bazis: 'Bazis-Mebelshik', '1c': '1C' };
 const PORT = parseInt(process.env.PC_PORT || '8099', 10);
 const TUGMA = '💻 Kompyuter';
 const KEYBOARD_ROWS = [[TUGMA]];
@@ -55,6 +56,9 @@ function holatMatni() {
   let m = `🟢 Kompyuter YONIQ — ${pc.kompyuter}\n`
     + `Yoqilgan: ${pc.boshlangan} (${davomiylik(yoniqS)} oldin)\n`
     + `Windows'ga kirgan: ${kirgan || 'hech kim (kirish oynasida turibdi)'}`;
+  if (pc.dasturlar) {
+    m += '\n\nDasturlar:\n' + Object.keys(DASTUR_NOMI).map((d) => `${pc.dasturlar[d] ? '🟢' : '⚪'} ${DASTUR_NOMI[d]}`).join('\n');
+  }
   if (pc.ochirish) m += `\n\n⏻ O'chirish rejalashtirilgan — ${Math.max(0, pc.ochirish - Math.floor(Date.now() / 1000))} soniyadan keyin.`;
   return m + ikkinchiKompMatni();
 }
@@ -91,7 +95,12 @@ function holatTugmalari() {
   const qator = pc.ochirish
     ? [{ text: "✖ O'chirishni bekor qilish", callback_data: 'pc:bekor' }]
     : [{ text: "⏻ O'chirish", callback_data: 'pc:ochir?' }];
-  return { inline_keyboard: [qator, [{ text: '🔄 Yangilash', callback_data: 'pc:yangila' }]] };
+  const dasturQatorlari = pc.dasturlar
+    ? Object.keys(DASTUR_NOMI).map((d) => [pc.dasturlar[d]
+      ? { text: `✖ ${DASTUR_NOMI[d]} — yopish`, callback_data: `pc:d:${d}:yop` }
+      : { text: `▶ ${DASTUR_NOMI[d]} — yoqish`, callback_data: `pc:d:${d}:yoq` }])
+    : [];
+  return { inline_keyboard: [...dasturQatorlari, qator, [{ text: '🔄 Yangilash', callback_data: 'pc:yangila' }]] };
 }
 
 // ---------------------------------------------------------------- agent bilan aloqa (HTTP)
@@ -110,7 +119,7 @@ function buyruqYubor(b) {
   if (k) {
     const bn = navbat;
     navbat = null;
-    javobBer(k, { id: bn.id, amal: bn.amal, kechikish: bn.kechikish });
+    javobBer(k, { id: bn.id, amal: bn.amal, kechikish: bn.kechikish, nom: bn.nom, qil: bn.qil });
     yuborilgan.set(bn.id, bn);
   }
   const id = navbat ? navbat.id : null;
@@ -137,6 +146,13 @@ async function natijaKeldi(n) {
     } else {
       await tg.editMessageText(b.chatId, b.msgId, `O'chirib bo'lmadi: ${n.xato || "noma'lum xato"}`, { reply_markup: holatTugmalari() });
     }
+  } else if (b.amal === 'dastur') {
+    const nomi = DASTUR_NOMI[b.nom] || b.nom;
+    const amalNomi = b.qil === 'yoq' ? 'yoqildi' : 'yopildi';
+    const bosh = n.ok ? `✅ ${nomi} ${amalNomi}.` : `⚠️ ${nomi}: ${n.xato || 'xato'}`;
+    const tugmalar = holatTugmalari();
+    if (!n.ok && b.qil === 'yop') tugmalar.inline_keyboard.unshift([{ text: `⛔ ${nomi} — majburan yopish (saqlanmaydi)`, callback_data: `pc:d:${b.nom}:majburan` }]);
+    await tg.editMessageText(b.chatId, b.msgId, `${bosh}\n\n${holatMatni()}`, { reply_markup: tugmalar });
   } else if (b.amal === 'bekor') {
     await tg.editMessageText(b.chatId, b.msgId, (n.ok ? "✖ O'chirish bekor qilindi.\n\n" : `Bekor qilib bo'lmadi: ${n.xato || ''}\n\n`) + holatMatni(), { reply_markup: holatTugmalari() });
   }
@@ -191,7 +207,7 @@ function serverniBoshla() {
         navbat = null;
         yuborilgan.set(bn.id, bn);
         kutayotganlar.add(k);
-        return javobBer(k, { id: bn.id, amal: bn.amal, kechikish: bn.kechikish });
+        return javobBer(k, { id: bn.id, amal: bn.amal, kechikish: bn.kechikish, nom: bn.nom, qil: bn.qil });
       }
       k.timer = setTimeout(() => { oxirgiAloqa = Date.now(); javobBer(k, null); }, USHLASH_MS);
       kutayotganlar.add(k);
@@ -239,6 +255,16 @@ async function handleCallback(cq) {
         [{ text: "Yo'q", callback_data: 'pc:yangila' }],
       ],
     });
+  } else if (data.startsWith('pc:d:')) {
+    if (!yoniqmi()) {
+      await tg.answerCallbackQuery(cq.id, { text: "Kompyuter o'chiq" });
+      await tahrir(holatMatni(), holatTugmalari());
+      return true;
+    }
+    const [, , nom, qil] = data.split(':');
+    await tg.answerCallbackQuery(cq.id, { text: 'Buyruq yuborildi' });
+    await tahrir(`⏳ ${DASTUR_NOMI[nom] || nom}: ${qil === 'yoq' ? 'yoqilmoqda' : 'yopilmoqda'}...`);
+    buyruqYubor({ amal: 'dastur', nom, qil, chatId, msgId });
   } else if (data.startsWith('pc:ochir:') || data === 'pc:bekor') {
     if (!yoniqmi()) {
       await tg.answerCallbackQuery(cq.id, { text: "Kompyuter o'chiq" });

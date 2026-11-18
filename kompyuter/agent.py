@@ -82,6 +82,7 @@ def holat_json():
         "boshlangan": time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - s)),
         "foydalanuvchilar": foydalanuvchilar(),
         "ochirish": int(oc) if oc else None,
+        "dasturlar": {n: ishlayaptimi(e) for n, e in DASTURLAR.items()},
     }
 
 
@@ -107,9 +108,45 @@ def bekor():
     return {"ok": r.returncode == 0 or not rejada_edi, "rejada_edi": rejada_edi}
 
 
+# Dasturlar: yoqish - foydalanuvchi sessiyasidagi "KA_<nom>" vazifasi orqali (agent SYSTEM nomidan ishlaydi,
+# o'zi ekranga oyna ocholmaydi); yopish - taskkill (avval yumshoq: saqlash oynasi chiqishi mumkin).
+DASTURLAR = {"yandex": "browser.exe", "telegram": "Telegram.exe", "bazis": "Bazis.exe", "1c": "1cv8c.exe"}
+
+
+def ishlayaptimi(exe):
+    out = subprocess.run(["tasklist", "/fi", f"imagename eq {exe}", "/nh"], capture_output=True,
+                         creationflags=NO_WINDOW).stdout.decode("oem", errors="replace")
+    return exe.lower() in out.lower()
+
+
+def dastur(nom, qil):
+    exe = DASTURLAR.get(nom)
+    if not exe:
+        return {"ok": False, "xato": f"noma'lum dastur: {nom}"}
+    if qil == "yoq":
+        r = subprocess.run(["schtasks", "/run", "/tn", f"KA_{nom}"], capture_output=True, creationflags=NO_WINDOW)
+        time.sleep(4)
+        ok = r.returncode == 0 and ishlayaptimi(exe)
+        jurnal(f"dastur yoq {nom}: {ok}")
+        return {"ok": ok, "xato": "" if ok else "ishga tushmadi (Windows'ga kirilmaganmi?)"}
+    imgs = [exe] + (["1cv8.exe", "1cestart.exe"] if nom == "1c" else [])
+    for i in imgs:
+        subprocess.run(["taskkill", "/im", i], capture_output=True, creationflags=NO_WINDOW)
+    time.sleep(5)
+    if qil == "majburan" or not ishlayaptimi(exe):
+        for i in imgs:
+            subprocess.run(["taskkill", "/f", "/im", i], capture_output=True, creationflags=NO_WINDOW)
+        time.sleep(1)
+    ok = not ishlayaptimi(exe)
+    jurnal(f"dastur {qil} {nom}: {ok}")
+    return {"ok": ok, "xato": "" if ok else "yopilmadi - ekranda saqlash oynasi chiqqan bo'lishi mumkin"}
+
+
 def bajar(buyruq):
     amal = buyruq.get("amal")
-    if amal == "ochir":
+    if amal == "dastur":
+        r = dastur(buyruq.get("nom"), buyruq.get("qil"))
+    elif amal == "ochir":
         r = ochir(buyruq.get("kechikish", 60))
     elif amal == "bekor":
         r = bekor()
