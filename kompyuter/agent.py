@@ -130,9 +130,16 @@ def dastur(nom, qil):
         jurnal(f"dastur yoq {nom}: {ok}")
         return {"ok": ok, "xato": "" if ok else "ishga tushmadi (Windows'ga kirilmaganmi?)"}
     imgs = [exe] + (["1cv8.exe", "1cestart.exe"] if nom == "1c" else [])
-    for i in imgs:
-        subprocess.run(["taskkill", "/im", i], capture_output=True, creationflags=NO_WINDOW)
-    time.sleep(5)
+    # Telegram/Yandex yopilganda trayga yashirinadi va saqlanmagan ish yo'q - ular darrov majburan yopiladi
+    if nom in ("telegram", "yandex"):
+        qil = "majburan"
+    if qil != "majburan":
+        # yumshoq yopish (WM_CLOSE) boshqa sessiyadan ishlamaydi - foydalanuvchi sessiyasidagi KA_yop_<nom> vazifasi
+        subprocess.run(["schtasks", "/run", "/tn", f"KA_yop_{nom}"], capture_output=True, creationflags=NO_WINDOW)
+        for _ in range(8):
+            time.sleep(1)
+            if not ishlayaptimi(exe):
+                break
     if qil == "majburan" or not ishlayaptimi(exe):
         for i in imgs:
             subprocess.run(["taskkill", "/f", "/im", i], capture_output=True, creationflags=NO_WINDOW)
