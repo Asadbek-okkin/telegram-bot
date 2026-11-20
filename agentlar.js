@@ -17,7 +17,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const tg = require('./telegram-api');
-const gemini = require('./gemini-api');
+const miya = require('./miya'); // 🧠 almashtiriladigan miya (Gemini yoki yangi AI)
 const statistika = require('./statistika');
 
 const FAYL = path.join(__dirname, 'data', 'agentlar.json');
@@ -104,7 +104,7 @@ const CLAUDE_ROLI = "Sen @claude_asadbek_bot - botlar jamoasi boshlig'isan. O'zb
 
 async function claudeQadam(vazifa, kontekst, guruh, qoshimcha) {
   const prompt = `${kontekst ? `Oldingi botlar natijasi:\n${kontekst}\n\n` : ''}${qoshimcha ? `Ma'lumot:\n${qoshimcha}\n\n` : ''}Vazifa: ${vazifa}`;
-  const matn = await gemini.chat([{ role: 'user', content: prompt }], CLAUDE_ROLI);
+  const matn = await miya.fikrla([{ role: 'user', content: prompt }], CLAUDE_ROLI);
   await tg.sendMessage(guruh, `🧠 ${matn || '…'}`);
   return matn;
 }
@@ -114,7 +114,7 @@ async function claudeQadam(vazifa, kontekst, guruh, qoshimcha) {
 async function bajar(guruh, buyruq, botlarHolati) {
   const A = agentlar();
   await tg.apiCall('sendChatAction', { chat_id: guruh, action: 'typing' }).catch(() => {});
-  const rejaMatn = await gemini.chat([{ role: 'user', content: buyruq }], rejaRoli()).catch((e) => `{"xato":"${e.message}"}`);
+  const rejaMatn = await miya.fikrla([{ role: 'user', content: buyruq }], rejaRoli()).catch((e) => `{"xato":"${e.message}"}`);
   const reja = jsonAjrat(rejaMatn);
   const natijalar = [];
   if (!reja || !Array.isArray(reja.qadamlar) || !reja.qadamlar.length) {
@@ -158,7 +158,7 @@ async function bajar(guruh, buyruq, botlarHolati) {
 async function tekshir(ishlar) {
   const material = ishlar.map((x, i) => `${i + 1}. VAZIFA: ${x.vazifa}\n${x.natijalar.map((n) => `  - ${n.nomi} (${n.ok ? 'bajardi' : 'XATO'}): ${n.matn.slice(0, 800)}`).join('\n') || '  (natija yo\'q)'}`).join('\n\n');
   const savol = `Har bir vazifa uchun natijani tekshir va baho ber: ✅ bajarildi / ⚠️ qisman / ❌ bajarilmadi, bir qator izoh bilan. Oxirida 1-2 gaplik umumiy xulosa va keyingi qadam.\n\n${material}`;
-  return gemini.chat([{ role: 'user', content: savol }], CLAUDE_ROLI).catch((e) => `Tekshirib bo'lmadi: ${e.message}`);
+  return miya.fikrla([{ role: 'user', content: savol }], CLAUDE_ROLI).catch((e) => `Tekshirib bo'lmadi: ${e.message}`);
 }
 
 // ---------------------------------------------------------------- 🏛 Majlis

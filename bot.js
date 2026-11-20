@@ -204,7 +204,8 @@ async function handleAiChat(text) {
   conversation.push({ role: 'user', content: text });
   if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
   try {
-    const reply = await aiProvider.chat(conversation, AI_SYSTEM_PROMPT);
+    // 🧠 miya.js: Gemini yoki /miya_ulash bilan ulangan yangi AI (Gemini kaliti bo'lmasa - eski Claude API)
+    const reply = gemini.API_KEY ? await require('./miya').fikrla(conversation, AI_SYSTEM_PROMPT) : await aiProvider.chat(conversation, AI_SYSTEM_PROMPT);
     conversation.push({ role: 'assistant', content: reply });
     if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
     await tg.sendMessage(CHAT_ID, reply);
@@ -222,6 +223,7 @@ async function handleText(text) {
   if (await botlar.handleText(CHAT_ID, text)) return; // 🛡 Botlar
   if (await require('./claude-limit').handleText(CHAT_ID, text)) return; // 📊 /limit - Claude limiti
   if (await agentlar.handleText(CHAT_ID, text)) return; // 🏛 Majlis, /bot_qosh, /jamoa
+  if (await require('./miya').handleText(CHAT_ID, text)) return; // 🧠 /miya, /miya_ulash, /miya_gemini
   if (await moderator.handleText(text)) return;
   switch (text) {
     case "💡 G'oya yozaman":
