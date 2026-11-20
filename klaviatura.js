@@ -33,10 +33,16 @@ async function oxirgi() {
 }
 
 /** O'quv videolari (relizdagi .mp4 fayllar): "1-ornatish.mp4" -> "1. Ornatish" */
-async function videoYubor(chatId, r) {
+async function videoYubor(chatId, r, hammasi = false) {
   r = r || (await oxirgi());
-  for (const v of r.videolar || []) {
-    const caption = '📹 ' + v.nom.replace(/\.mp4$/i, '').replace(/^(\d+)-/, '$1. ').replace(/-/g, ' ');
+  let royxat = r.videolar || [];
+  // odatda faqat bitta to'liq qo'llanma ("0-..."), /klaviatura_video_hammasi - qismlari bilan
+  const toliq = royxat.filter((v) => /^0-/.test(v.nom));
+  if (!hammasi && toliq.length) royxat = toliq;
+  for (const v of royxat) {
+    const caption = /^0-/.test(v.nom)
+      ? "📹 Sof Özbek klaviatura — to'liq qo'llanma: o'rnatish, yangi harflar, so'z takliflari, ovoz, o'girish va fishkalar"
+      : '📹 ' + v.nom.replace(/\.mp4$/i, '').replace(/^(\d+)-/, '$1. ').replace(/-/g, ' ');
     const d = oqi();
     d.videoIds = d.videoIds || {};
     const kalit = `${r.tag}/${v.nom}`;
@@ -124,8 +130,8 @@ async function yubor(chatId, r, sarlavha) {
 
 /** Admin chat: «⌨️ Klaviatura» yoki /klaviatura */
 async function handleText(chatId, text) {
-  if (/^\/klaviatura_video\b/.test(text || '')) {
-    try { await videoYubor(chatId); } catch (e) { await tg.sendMessage(chatId, `📹 Videolarni yuborib bo'lmadi: ${e.message}`); }
+  if (/^\/klaviatura_video/.test(text || '')) {
+    try { await videoYubor(chatId, null, /hammasi/.test(text)); } catch (e) { await tg.sendMessage(chatId, `📹 Videolarni yuborib bo'lmadi: ${e.message}`); }
     return true;
   }
   if (text !== TUGMA && !/^\/klaviatura\b/.test(text || '')) return false;
