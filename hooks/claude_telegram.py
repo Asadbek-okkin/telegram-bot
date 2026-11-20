@@ -251,7 +251,64 @@ def mavzu(inp):
     t = inp.get("session_title")
     if t:
         return t
-    yol = inp.get("transcript_path")
+    return transkript_mavzusi(inp.get("transcript_path"))
+
+
+CLAUDE_PAPKA = os.path.join(os.path.expanduser("~"), ".claude")
+
+
+def jarayon_tirikmi(pid):
+    try:
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        kod = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(h, ctypes.byref(kod))
+        k32.CloseHandle(h)
+        return bool(ok) and kod.value == 259  # STILL_ACTIVE
+    except Exception:
+        return True
+
+
+def jonli_sessiyalar():
+    """~/.claude/sessions/<pid>.json - Claude Code'ning o'zi yuritadigan ochiq sessiyalar ro'yxati
+    (status: busy/idle). Jarayoni tirik bo'lganlarini qaytaradi; None = ro'yxatni o'qib bo'lmadi."""
+    papka = os.path.join(CLAUDE_PAPKA, "sessions")
+    try:
+        fayllar = [x for x in os.listdir(papka) if x.endswith(".json")]
+    except Exception:
+        return None
+    natija = []
+    for x in fayllar:
+        try:
+            with open(os.path.join(papka, x), encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if d.get("kind") not in (None, "interactive") or not d.get("sessionId"):
+            continue
+        if not jarayon_tirikmi(d.get("pid", 0)):
+            continue
+        sid = d["sessionId"]
+        tr = ""
+        try:
+            import glob
+            g = glob.glob(os.path.join(CLAUDE_PAPKA, "projects", "*", sid + ".jsonl"))
+            tr = g[0] if g else ""
+        except Exception:
+            pass
+        st = d.get("status", "")
+        natija.append({
+            "sid": sid,
+            "loyiha": os.path.basename(str(d.get("cwd", "")).rstrip("/\\")) or "loyiha",
+            "mavzu": transkript_mavzusi(tr) or d.get("name", ""),
+            "holat": "ishlayapti" if st == "busy" else "tayyor" if st == "idle" else "kutyapti",
+        })
+    return natija
+
+
+def transkript_mavzusi(yol):
     if not yol or not os.path.exists(yol):
         return ""
     try:
@@ -289,6 +346,9 @@ def holat_yubor(inp, holat, izoh="", ol=False, timeout=4, **qo):
     if not sid:
         return []
     data = {"sid": sid, "loyiha": loyiha(inp), "mavzu": mavzu(inp), "holat": holat, "izoh": izoh, "ol": ol}
+    royxat = jonli_sessiyalar()
+    if royxat is not None:
+        data["royxat"] = royxat  # server ro'yxatdagi boshqa (hook hali ishlamagan/yopilgan) sessiyalarni ham tuzatadi
     data.update(qo)
     if holat != "ishlayapti":  # keyingi PostToolUse "ishlayapti" ni darrov yuborsin
         try:
@@ -307,7 +367,7 @@ def holat_fayl(sid, tur):
 
 
 def telegram_matni(xabarlar):
-    return "Foydalanuvchi (kompyuterdan uzoqda) Telegram orqali shu sessiyaga yozdi:\n" + "\n---\n".join(xabarlar)
+    return "Foydalanuvchi Telegram (@claude_asadbek_bot) orqali shu sessiyaga yozdi - buni yangi topshiriq/javob deb bajaring:\n" + "\n---\n".join(xabarlar)
 
 
 def kutishni_toxtat(sid):
@@ -355,7 +415,7 @@ def rejim_kutish(inp):
     if not sid:
         return
     uzoq = uzoqdami()
-    xabarlar = holat_yubor(inp, "tayyor", ol=True, bildir=uzoq, xabar=oxirgi_xabar(inp) if uzoq else "", timeout=10)
+    xabarlar = holat_yubor(inp, "tayyor", ol=True, bildir=uzoq, xabar=oxirgi_xabar(inp), timeout=10)
     belgi = uuid.uuid4().hex
     f = holat_fayl(sid, "kut")
     with open(f, "w") as h:
@@ -369,7 +429,16 @@ def rejim_kutish(inp):
             return False
 
     oxir = time.time() + KUTISH_MAX_S
+    oxirgi_royxat = time.time()
     while not xabarlar and time.time() < oxir and menikimi():
+        if time.time() - oxirgi_royxat > 60:  # bo'sh turgan paytda ham ro'yxat (boshqa sessiyalar holati) yangilanib tursin
+            oxirgi_royxat = time.time()
+            r = jonli_sessiyalar()
+            if r is not None:
+                try:
+                    post("/holat", {"royxat": r}, timeout=10)
+                except Exception:
+                    pass
         try:
             xabarlar = post("/kut", {"sid": sid}, timeout=40).get("xabarlar") or []
         except Exception:

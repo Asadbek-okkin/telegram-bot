@@ -67,7 +67,11 @@ function royxat() {
 }
 
 function tugmalar(list) {
-  const q = list.slice(0, 10).map((s, i) => [{ text: `✉️ ${i + 1}-sessiyaga yozish`, callback_data: `cs:yoz:${s.sid.slice(0, 12)}` }]);
+  const q = list.slice(0, 10).map((s, i) => {
+    const qator = [{ text: `✉️ ${i + 1}-ga yozish`, callback_data: `cs:yoz:${s.sid.slice(0, 12)}` }];
+    if (s.natija) qator.push({ text: `📄 ${i + 1}-natija`, callback_data: `cs:nat:${s.sid.slice(0, 12)}` });
+    return qator;
+  });
   q.push([{ text: '🔄 Yangilash', callback_data: 'cs:yangila' }]);
   return { inline_keyboard: q };
 }
@@ -96,9 +100,35 @@ function kutuvchigaBer(sid) {
   saqla();
 }
 
+// Kompyuterdagi Claude Code'ning o'z ro'yxati (~/.claude/sessions): ochiq sessiyalarning to'liq to'plami.
+// Unda yo'q sessiya - yopilgan; bor, lekin serverda yo'q - hook hali ishlamagan sessiya (qo'shiladi).
+function royxatniMoslash(royxat) {
+  const bor = new Set();
+  for (const r of royxat) {
+    const sid = String(r.sid || '').slice(0, 64);
+    if (!sid) continue;
+    bor.add(sid);
+    const s = sessiyalar[sid] || { sid, boshlangan: Date.now(), navbat: [], oxirgi: Date.now() };
+    s.loyiha = String(r.loyiha || s.loyiha || 'loyiha').slice(0, 80);
+    if (r.mavzu) s.mavzu = String(r.mavzu).slice(0, 120);
+    const yangi = r.holat;
+    const ozgardi = s.holat !== yangi && !(s.holat === 'kutyapti' && yangi === 'ishlayapti');
+    if (!s.holat || ozgardi) {
+      s.holat = yangi;
+      s.izoh = '';
+      s.oxirgi = Date.now();
+    } else if (yangi !== 'ishlayapti') {
+      s.oxirgi = Date.now(); // bo'sh/kutayotgan sessiya tirik - "ishlayapti(?)" shubhasi faqat ishlayotganlarga
+    }
+    sessiyalar[sid] = s;
+  }
+  for (const sid of Object.keys(sessiyalar)) if (!bor.has(sid)) delete sessiyalar[sid];
+}
+
 function holatKeldi(b) {
+  if (Array.isArray(b.royxat)) royxatniMoslash(b.royxat);
   const sid = String(b.sid || '').slice(0, 64);
-  if (!sid) return { xabarlar: [] };
+  if (!sid) { saqla(); return { xabarlar: [] }; }
   if (b.holat === 'tugadi') {
     delete sessiyalar[sid];
     saqla();
@@ -110,6 +140,7 @@ function holatKeldi(b) {
   if (b.holat) s.holat = b.holat;
   s.izoh = b.izoh ? String(b.izoh).slice(0, 80) : '';
   s.oxirgi = Date.now();
+  if (b.xabar) { s.natija = String(b.xabar).slice(-3500); s.natijaVaqt = Date.now(); }
   sessiyalar[sid] = s;
   const xabarlar = b.ol ? navbatniOl(s) : [];
   saqla();
@@ -200,6 +231,18 @@ async function handleCallback(cq) {
     yozishSid = null;
     await tg.answerCallbackQuery(cq.id, { text: 'Bekor qilindi' });
     await tg.editMessageText(CHAT_ID, msgId, '✖ Xabar yozish bekor qilindi.');
+    return true;
+  }
+  if (data.startsWith('cs:nat:')) {
+    const bosh = data.slice(7);
+    const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));
+    await tg.answerCallbackQuery(cq.id);
+    if (!s || !s.natija) { await tg.sendMessage(CHAT_ID, "Bu sessiyada hali natija yo'q."); return true; }
+    const r = await tg.sendMessage(
+      CHAT_ID,
+      `📄 Oxirgi natija — ${s.mavzu || s.loyiha} (${qachon(s.natijaVaqt || s.oxirgi)}):\n\n${s.natija}\n\n↩️ Javob yozsangiz shu sessiyaga boradi.`,
+    );
+    if (r && r.ok) { s.bildirishId = r.result.message_id; saqla(); }
     return true;
   }
   if (data.startsWith('cs:yoz:')) {
