@@ -86,7 +86,10 @@ async function kartaMatni(b) {
   let log = '';
   if (b.joy === 'server' && (await unit(b))) {
     const r = await ishga('journalctl', ['-u', await unit(b), '-n', '15', '--no-pager', '-o', 'short-iso']);
-    log = r.ok ? r.out : `(log o'qilmadi: ${r.err.slice(0, 200)})`;
+    const ruxsatYoq = !r.ok || /not seeing messages|No journal files|No journal file|Permission denied/i.test(`${r.out}\n${r.err}`);
+    log = ruxsatYoq
+      ? "🔒 Loglarni ko'rish va boshqarish uchun serverda bir martalik ruxsat kerak:\nkompyuterda telegram-bot\\deploy\\botlar-ruxsat.bat ni ishga tushiring."
+      : r.out;
   } else if (b.joy === 'kompyuter') {
     log = (kompyuterBotlar[b.id] || {}).log || '';
   } else {
