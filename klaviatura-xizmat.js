@@ -73,22 +73,201 @@ function json(res, kod, obj) {
 
 const xatoEslatildi = new Map(); // bir xil xato kuniga 1 marta
 
+// ---------- qurilma joylashuvi (IP saqlanmaydi, faqat davlat/viloyat) ----------
+const geoKesh = new Map();
+let geoDaqiqa = 0;
+let geoSoni = 0;
+function ipOl(req) {
+  return String(req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+}
+function geoAniqla(ip) {
+  return new Promise((resolve) => {
+    if (!ip || /^(127\.|10\.|192\.168\.|::1)/.test(ip)) return resolve(null);
+    if (geoKesh.has(ip)) return resolve(geoKesh.get(ip));
+    const daq = Math.floor(Date.now() / 60000);
+    if (daq !== geoDaqiqa) { geoDaqiqa = daq; geoSoni = 0; }
+    if (++geoSoni > 40) return resolve(null); // ip-api.com: daqiqasiga 45 so'rov
+    require('http').get(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode,regionName,city`, (r) => {
+      let s = '';
+      r.on('data', (c) => { s += c; });
+      r.on('end', () => {
+        try {
+          const g = JSON.parse(s);
+          const natija = g.status === 'success' ? { davlat: g.country, kod: g.countryCode, viloyat: g.regionName, shahar: g.city } : null;
+          geoKesh.set(ip, natija);
+          if (geoKesh.size > 20000) geoKesh.clear();
+          resolve(natija);
+        } catch { resolve(null); }
+      });
+    }).on('error', () => resolve(null));
+  });
+}
+
+function qurilmaBelgila(req, q, v, a) {
+  const eski = yigim.qurilmalar[q] || { birinchi: Date.now() };
+  yigim.qurilmalar[q] = { ...eski, vaqt: Date.now(), v: String(v || eski.v || '').slice(0, 20), a: String(a || eski.a || '').slice(0, 40) };
+  if (!eski.davlat) {
+    geoAniqla(ipOl(req)).then((g) => { if (g && yigim.qurilmalar[q]) { Object.assign(yigim.qurilmalar[q], g); saqla(); } });
+  }
+}
+
+// ---------- ovozni matnga aylantirish (Gemini) ----------
+const ovozKunlik = new Map(); // qurilma|kun -> soni
+function ovozMatni(audio, til) {
+  return new Promise((resolve, reject) => {
+    const kalit = process.env.PM_GEMINI_API_KEY;
+    if (!kalit) return reject(new Error("Gemini kaliti yo'q"));
+    const model = process.env.PM_GEMINI_MODEL || 'gemini-2.5-flash';
+    const korsatma = til === 'ru' ? 'Транскрибируй это аудио дословно на русском. Верни только текст.'
+      : til === 'en' ? 'Transcribe this audio verbatim in English. Return only the text.'
+        : "Bu ovozni so'zma-so'z o'zbek tilida matnga aylantir. Sof o'zbek adabiy imlosida, lotin yozuvida yoz " +
+          "(o', g', sh, ch harflari bilan; tinish belgilarini qo'y). Faqat aytilgan matnni qaytar, izoh yozma. " +
+          "Hech narsa eshitilmasa bo'sh qaytar.";
+    const body = JSON.stringify({ contents: [{ role: 'user', parts: [
+      { inline_data: { mime_type: 'audio/aac', data: audio.toString('base64') } }, { text: korsatma }] }] });
+    const r = require('https').request({
+      hostname: 'generativelanguage.googleapis.com', path: `/v1beta/models/${model}:generateContent?key=${kalit}`,
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 35000,
+    }, (rs) => {
+      const b = [];
+      rs.on('data', (c) => b.push(c));
+      rs.on('end', () => {
+        try {
+          const p = JSON.parse(Buffer.concat(b).toString('utf8'));
+          if (p.error) return reject(new Error(p.error.message || 'Gemini xato'));
+          const c = (p.candidates || [])[0];
+          resolve(c && c.content && c.content.parts ? c.content.parts.map((x) => x.text || '').join('').trim() : '');
+        } catch (e) { reject(e); }
+      });
+    });
+    r.on('timeout', () => r.destroy(new Error('vaqt tugadi')));
+    r.on('error', reject);
+    r.end(body);
+  });
+}
+
+function ovozQabul(req, res) {
+  const q = String(req.headers['x-q'] || '');
+  if (!Q_RE.test(q)) return json(res, 400, { xato: "noto'g'ri so'rov" });
+  const kun = `${q}|${new Date().toISOString().slice(0, 10)}`;
+  const n = (ovozKunlik.get(kun) || 0) + 1;
+  ovozKunlik.set(kun, n);
+  if (ovozKunlik.size > 50000) ovozKunlik.clear();
+  if (n > 150) return json(res, 429, { xato: 'kunlik chegara' });
+  const b = [];
+  let hajm = 0;
+  req.on('data', (c) => { hajm += c.length; if (hajm > 2 * 1024 * 1024) { req.destroy(); return; } b.push(c); });
+  req.on('end', () => {
+    if (hajm < 500) return json(res, 400, { xato: 'ovoz juda qisqa' });
+    qurilmaBelgila(req, q, req.headers['x-v'], null);
+    const til = ['uz', 'ru', 'en'].includes(req.headers['x-til']) ? req.headers['x-til'] : 'uz';
+    ovozMatni(Buffer.concat(b), til)
+      .then((matn) => { yigim.ovozSoni = (yigim.ovozSoni || 0) + 1; saqla(); json(res, 200, { matn }); })
+      .catch((e) => { console.error('klaviatura ovoz:', e.message); json(res, 502, { xato: 'tanib bolmadi' }); });
+  });
+}
+
+// ---------- admin ilovasi uchun (kalit bilan) ----------
+const ADMIN_KALIT_FAYL = path.join(__dirname, 'data', 'klaviatura-admin-kalit.txt');
+function adminKalit() {
+  try { return fs.readFileSync(ADMIN_KALIT_FAYL, 'utf8').trim(); } catch {
+    const k = require('crypto').randomBytes(24).toString('hex');
+    fs.mkdirSync(path.dirname(ADMIN_KALIT_FAYL), { recursive: true });
+    fs.writeFileSync(ADMIN_KALIT_FAYL, k, { mode: 0o600 });
+    return k;
+  }
+}
+const adminXato = new Map(); // ip|soat -> noto'g'ri urinishlar
+function adminmi(req) {
+  const ip = ipOl(req);
+  const k = `${ip}|${Math.floor(Date.now() / 3600000)}`;
+  if ((adminXato.get(k) || 0) >= 10) return null; // soatiga 10 ta noto'g'ri urinishdan keyin bloklanadi
+  const a = Buffer.from(String(req.headers['x-admin-kalit'] || ''));
+  const b = Buffer.from(adminKalit());
+  const ok = a.length === b.length && require('crypto').timingSafeEqual(a, b);
+  if (!ok) { adminXato.set(k, (adminXato.get(k) || 0) + 1); if (adminXato.size > 5000) adminXato.clear(); }
+  return ok;
+}
+
+function sanaq(royxat, kalitFn) {
+  const m = {};
+  for (const x of royxat) { const k = kalitFn(x) || "Noma'lum"; m[k] = (m[k] || 0) + 1; }
+  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+}
+
+function statistika() {
+  const hozir = Date.now();
+  const KUN = 86400000;
+  const q = Object.values(yigim.qurilmalar);
+  const faol = (k) => q.filter((x) => hozir - x.vaqt < k * KUN).length;
+  const kunlik = [];
+  for (let i = 29; i >= 0; i--) {
+    const bosh = new Date(hozir - i * KUN).toISOString().slice(0, 10);
+    kunlik.push([bosh, q.filter((x) => x.birinchi && new Date(x.birinchi).toISOString().slice(0, 10) === bosh).length]); // yangi o'rnatganlar
+  }
+  const nomzod = Object.entries(yigim.sozlar).map(([s, e]) => [s, e.q.length]).sort((a, b) => b[1] - a[1]).slice(0, 150);
+  return {
+    vaqt: hozir,
+    jami: q.length, bugun: faol(1), hafta: faol(7), oy: faol(30),
+    ovozSoni: yigim.ovozSoni || 0,
+    kunlik,
+    davlatlar: sanaq(q, (x) => x.davlat),
+    viloyatlar: sanaq(q, (x) => (x.davlat ? `${x.davlat} — ${x.viloyat || '?'}` : null)),
+    shaharlar: sanaq(q, (x) => (x.shahar ? `${x.shahar} (${x.kod || '?'})` : null)).slice(0, 50),
+    versiyalar: sanaq(q.filter((x) => hozir - x.vaqt < 30 * KUN), (x) => x.v),
+    telefonlar: sanaq(q, (x) => x.a).slice(0, 30),
+    fikrlar: yigim.fikrlar.filter((f) => f.tur === 'fikr').slice(-200).reverse(),
+    xatolar: yigim.fikrlar.filter((f) => f.tur === 'xato').slice(-40).reverse(),
+    lugat: { versiya: lugat.versiya, soni: lugat.sozlar.length, oxirgilar: lugat.sozlar.slice(-100).reverse() },
+    nomzodlar: nomzod,
+    keyingiReja: (yigim.oxirgiReja || 0) + REJA_MS,
+  };
+}
+
+function adminHttp(req, res, yol) {
+  const ok = adminmi(req);
+  if (ok === null) return json(res, 429, { xato: "ko'p noto'g'ri urinish, 1 soatdan keyin" });
+  if (!ok) return json(res, 403, { xato: "kalit noto'g'ri" });
+  if (yol === 'admin/statistika' && req.method === 'GET') return json(res, 200, statistika());
+  if (yol === 'admin/ochir' && req.method === 'POST') {
+    return tanaOl(req, 2000).then((b) => {
+      const s = String((b && b.soz) || '').toLowerCase();
+      if (!SOZ_RE.test(s)) return json(res, 400, { xato: "noto'g'ri so'z" });
+      sozniOchir(s);
+      return json(res, 200, { ok: true });
+    });
+  }
+  if (yol === 'admin/reja' && req.method === 'POST') { reja(true).catch(() => {}); return json(res, 200, { ok: true }); }
+  return json(res, 404, { xato: "yo'q" });
+}
+
+function sozniOchir(s) {
+  lugat.sozlar = lugat.sozlar.filter((x) => x !== s);
+  if (!lugat.qora.includes(s)) lugat.qora.push(s);
+  lugat.versiya += 1;
+  yoz(LUGAT, lugat);
+  delete yigim.sozlar[s];
+  saqla();
+}
+
 function handleHttp(req, res) {
   const url = req.url.split('?')[0].replace(/\/+$/, '');
-  const m = url.match(/\/klaviatura\/(sozlar|fikr|lugat)$/);
+  const m = url.match(/\/klaviatura\/(sozlar|fikr|lugat|ovoz|admin\/[a-z]+)$/);
   if (!m) return false;
   yuklash();
+  if (m[1].startsWith('admin/')) { adminHttp(req, res, m[1]); return true; }
   if (m[1] === 'lugat' && req.method === 'GET') {
     json(res, 200, { versiya: lugat.versiya, sozlar: lugat.sozlar });
     return true;
   }
   if (req.method !== 'POST') { res.writeHead(405); res.end(); return true; }
+  if (m[1] === 'ovoz') { ovozQabul(req, res); return true; }
   if (!ruxsatmi(req)) { json(res, 429, { xato: "ko'p so'rov" }); return true; }
   const max = m[1] === 'fikr' ? 8000 : 20000;
   tanaOl(req, max).then((b) => {
     if (!b || !Q_RE.test(String(b.q || ''))) return json(res, 400, { xato: "noto'g'ri so'rov" });
     const q = String(b.q);
-    yigim.qurilmalar[q] = { vaqt: Date.now(), v: String(b.v || '').slice(0, 20) };
+    qurilmaBelgila(req, q, b.v, b.a);
     if (m[1] === 'sozlar') {
       const sozlar = Array.isArray(b.s) ? b.s.slice(0, 300) : [];
       const qora = new Set(lugat.qora);
@@ -175,13 +354,26 @@ async function handleText(chatId, text) {
   if (m) {
     yuklash();
     const s = m[1].toLowerCase();
-    lugat.sozlar = lugat.sozlar.filter((x) => x !== s);
-    if (!lugat.qora.includes(s)) lugat.qora.push(s);
-    lugat.versiya += 1;
-    yoz(LUGAT, lugat);
-    delete yigim.sozlar[s];
-    saqla();
+    sozniOchir(s);
     await tg.sendMessage(chatId, `🗑 "${s}" lug'atdan olib tashlandi va boshqa qo'shilmaydi.`);
+    return true;
+  }
+  if (/^\/klaviatura_admin\b/.test(text || '')) {
+    // admin ilovasi + kirish kaliti (faqat admin chatida ishlaydi - bot.js faqat admin matnini bu yerga beradi)
+    try {
+      await require('./klaviatura').faylYubor(chatId,
+        'https://github.com/Asadbek-okkin/sof-ozbek-klaviatura/releases/download/admin/SofOzbekAdmin.apk',
+        'SofOzbekAdmin.apk', "📊 Sof Özbek Admin — foydalanuvchilar statistikasi, joylashuv, fikrlar, lug'at.");
+    } catch (e) {
+      await tg.sendMessage(chatId, `Admin ilovani yuborib bo'lmadi: ${e.message}`);
+    }
+    await tg.sendMessage(chatId, `🔑 Admin kaliti (hech kimga bermang):\n\n${adminKalit()}\n\nIlovani ochib shu kalitni kiriting. ` +
+      'Kalitni almashtirish: /klaviatura_admin_yangi_kalit');
+    return true;
+  }
+  if (/^\/klaviatura_admin_yangi_kalit\b/.test(text || '')) {
+    try { fs.unlinkSync(ADMIN_KALIT_FAYL); } catch {}
+    await tg.sendMessage(chatId, `🔑 Yangi admin kaliti (eskisi endi ishlamaydi):\n\n${adminKalit()}`);
     return true;
   }
   return false;

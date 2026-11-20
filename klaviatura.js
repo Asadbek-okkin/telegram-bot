@@ -192,4 +192,11 @@ function start(adminChatId) {
   setInterval(tekshir, 30 * 60 * 1000);
 }
 
-module.exports = { TUGMA, handleText, begona, start };
+/** Istalgan APK'ni URL'dan yuklab, hujjat qilib yuboradi (admin ilovasi uchun). */
+async function faylYubor(chatId, url, nom, caption) {
+  const buf = await yuklab(url);
+  const res = await hujjatYubor(chatId, buf, nom, caption);
+  if (!res || !res.ok) throw new Error((res && res.description) || 'sendDocument xato');
+}
+
+module.exports = { TUGMA, handleText, begona, start, faylYubor };
