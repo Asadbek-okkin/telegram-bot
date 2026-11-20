@@ -983,6 +983,12 @@ def rejim_kuzat():
         limit_yangila()  # har 10 daqiqada hooks/claude_limit.py (siz ruxsat bergan skript) limit.json ni yangilaydi
         lim = limit_oqi()  # 📊 Claude limitlari
         if lim:
+            try:  # qaysi loyiha limitni ko'p sarflagani (shu haftalik davrda)
+                w = lim.get("seven_day") or {}
+                boshi = (w.get("tiklanadi") or time.time()) - 7 * 86400
+                lim["loyihalar"] = loyiha_sarfi(boshi)
+            except Exception:
+                pass
             data["claude_limit"] = lim
         if data:
             try:
@@ -1026,6 +1032,72 @@ def rejim_statusline():
             qism.append(f"5 soat {yoz['five_hour']['foiz']:.0f}%")
     model = (d.get("model") or {}).get("display_name") or ""
     sys.stdout.buffer.write(" · ".join([x for x in [model] + qism if x]).encode("utf-8"))
+
+
+# 🏗 Loyihalar bo'yicha sarf: ~/.claude/projects/**/*.jsonl dagi har javobning tokenlari (narx og'irligi bilan:
+# kirish 1, keshga yozish 1.25, keshdan o'qish 0.1, chiqish 5). Limit foizi aynan shu hisob emas, lekin
+# ULUSH (qaysi loyiha qancha) uchun yaxshi taxmin. Fayllar o'zgarmasa qayta o'qilmaydi (kesh).
+_sarf_kesh = {}  # yol -> (mtime, size, cwd, [(vaqt_sek, ogirlik), ...])
+
+
+def _fayl_sarfi(yol):
+    from datetime import datetime
+    st = os.stat(yol)
+    k = _sarf_kesh.get(yol)
+    if k and k[0] == st.st_mtime and k[1] == st.st_size:
+        return k[2], k[3]
+    cwd = ""
+    korilgan = set()
+    yozuvlar = []
+    with open(yol, encoding="utf-8", errors="ignore") as f:
+        for q in f:
+            if not cwd and '"cwd"' in q:
+                try:
+                    cwd = json.loads(q).get("cwd") or ""
+                except Exception:
+                    pass
+            if '"usage"' not in q:
+                continue
+            try:
+                e = json.loads(q)
+            except Exception:
+                continue
+            m = e.get("message") or {}
+            u = m.get("usage") or {}
+            mid = m.get("id") or e.get("uuid")
+            if not u or mid in korilgan:
+                continue
+            korilgan.add(mid)
+            og = (u.get("input_tokens", 0) + 1.25 * u.get("cache_creation_input_tokens", 0)
+                  + 0.1 * u.get("cache_read_input_tokens", 0) + 5 * u.get("output_tokens", 0))
+            try:
+                t = datetime.fromisoformat(str(e.get("timestamp")).replace("Z", "+00:00")).timestamp()
+            except Exception:
+                t = st.st_mtime
+            yozuvlar.append((t, og))
+    _sarf_kesh[yol] = (st.st_mtime, st.st_size, cwd, yozuvlar)
+    return cwd, yozuvlar
+
+
+def loyiha_sarfi(boshi, n=5):
+    """[{loyiha, ulush}] - shu davrda eng ko'p sarflagan loyihalar (ulush %)."""
+    import glob
+    jami = {}
+    for yol in glob.glob(os.path.join(CLAUDE_PAPKA, "projects", "**", "*.jsonl"), recursive=True):
+        try:
+            if os.path.getmtime(yol) < boshi:
+                continue
+            cwd, yozuvlar = _fayl_sarfi(yol)
+        except Exception:
+            continue
+        s = sum(og for t, og in yozuvlar if t >= boshi)
+        if s <= 0:
+            continue
+        nom = os.path.basename(cwd.rstrip("/\\")) or os.path.basename(os.path.dirname(yol))
+        jami[nom] = jami.get(nom, 0) + s
+    umumiy = sum(jami.values()) or 1
+    return [{"loyiha": k, "ulush": round(v * 100 / umumiy, 1)}
+            for k, v in sorted(jami.items(), key=lambda x: -x[1])[:n]]
 
 
 _limit_oxirgi = 0
