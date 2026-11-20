@@ -39,7 +39,7 @@ function ustun(foiz) {
 }
 
 function oyna(nomi, w) {
-  if (!w || w.foiz === undefined) return `${nomi}: ma'lumot yo'q`;
+  if (!w || w.foiz === undefined) return `${nomi}: — (Anthropic hozircha ko'rsatmadi)`;
   const q = Math.max(0, 100 - w.foiz);
   return `${nomi}: ${w.foiz.toFixed(0)}% ishlatildi · ${q.toFixed(0)}% qoldi\n${ustun(w.foiz)}\n🔄 ${toshkent(w.tiklanadi)} da tiklanadi (${qolgan(w.tiklanadi)} qoldi)`;
 }
@@ -48,6 +48,13 @@ function matn() {
   let m = `🤖━━ CLAUDE LIMITI ━━🤖\n💎 Tarif: ${TARIF}\n`;
   if (!holat || !holat.vaqt) {
     return `${m}\n⏳ Hali ma'lumot kelmagan. Kompyuterda Claude Code'da bitta xabar yozilgach paydo bo'ladi.`;
+  }
+  const hf = holat.seven_day ? holat.seven_day.foiz : null;
+  if (hf !== null) {
+    m += hf >= 90 ? '🔴 Limit tugayapti — faqat muhim ishlar!\n'
+      : hf >= 75 ? '🟠 Limit kam qoldi — tejab ishlating\n'
+        : hf >= 50 ? '🟡 Yarmidan oshdi — me\'yorida ishlating\n'
+          : '🟢 Limit yetarli — bemalol ishlash mumkin\n';
   }
   m += `\n${oyna('📅 Haftalik (7 kun)', holat.seven_day)}\n\n${oyna('⏱ 5 soatlik', holat.five_hour)}`;
   const daq = Math.round((Date.now() / 1000 - holat.vaqt) / 60);
