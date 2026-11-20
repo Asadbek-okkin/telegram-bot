@@ -76,7 +76,7 @@ function ogohlantirish() {
 
 function royxat() {
   const list = tartibli();
-  if (!list.length) return { list, matn: `${ogohlantirish()}🤖 Claude Code: ochiq sessiya yo'q.` };
+  if (!list.length) return { list, matn: `${ogohlantirish()}🤖 Claude Code: ochiq sessiya yo'q.${limitQatori()}` };
   const loyihalar = new Set(list.map((s) => s.loyiha));
   let m = `${ogohlantirish()}🤖 Claude Code — ${list.length} ta sessiya\n`;
   list.forEach((s, i) => {
@@ -85,7 +85,17 @@ function royxat() {
     m += `\n      ${holatQisqa(s)}`;
   });
   m += '\n\n👇 Sessiyani tanlang — natijasini ko\'rasiz va unga yozasiz.';
-  return { list, matn: m };
+  return { list, matn: m + limitQatori() };
+}
+
+// 📊 Claude limiti qisqa qatori (to'liq hisobot - "📊 Limit" tugmasi, claude-limit.js)
+function limitQatori() {
+  try {
+    const q = require('./claude-limit').qisqa();
+    return q ? `\n\n${q}` : '';
+  } catch {
+    return '';
+  }
 }
 
 function qisqart(t, n) {
@@ -94,7 +104,7 @@ function qisqart(t, n) {
 
 function tugmalar(list) {
   const q = list.slice(0, 10).map((s, i) => [{ text: `${belgi(s)} ${i + 1}. ${qisqart(nomi(s), 34)}`, callback_data: `cs:och:${s.sid.slice(0, 12)}` }]);
-  q.push([{ text: '🔄 Yangilash', callback_data: 'cs:yangila' }]);
+  q.push([{ text: '📊 Limit', callback_data: 'cs:limit' }, { text: '🔄 Yangilash', callback_data: 'cs:yangila' }]);
   return { inline_keyboard: q };
 }
 
@@ -460,6 +470,13 @@ async function handleCallback(cq) {
   const data = cq.data || '';
   if (!data.startsWith('cs:')) return false;
   const msgId = cq.message.message_id;
+  if (data === 'cs:limit') {
+    await tg.answerCallbackQuery(cq.id);
+    await tg.editMessageText(CHAT_ID, msgId, require('./claude-limit').matn(), {
+      reply_markup: { inline_keyboard: [[{ text: '⬅️ Sessiyalar', callback_data: 'cs:yangila' }, { text: '🔄', callback_data: 'cs:limit' }]] },
+    });
+    return true;
+  }
   if (data === 'cs:yangila') {
     yozishSid = null;
     const { list, matn } = royxat();

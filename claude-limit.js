@@ -55,6 +55,13 @@ function matn() {
   return m;
 }
 
+// "🤖 Claude Code" ro'yxati ostidagi bir qator
+function qisqa() {
+  if (!holat || !holat.vaqt) return '';
+  const f = (w) => (w ? `${w.foiz.toFixed(0)}%` : '—');
+  return `📊 Limit: haftalik ${f(holat.seven_day)} · 5 soatlik ${f(holat.five_hour)}`;
+}
+
 let guruhOl = () => null;
 let egaChat = null;
 
@@ -94,4 +101,4 @@ function start(chatId, guruhFn) {
   guruhOl = guruhFn;
 }
 
-module.exports = { keldi, matn, handleText, start };
+module.exports = { keldi, matn, qisqa, handleText, start };

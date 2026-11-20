@@ -84,9 +84,8 @@ function mainKeyboard() {
     keyboard: [
       [...kompyuter.KEYBOARD_ROWS[0], '🛡 Botlar'],
       ...claudeSessiya.KEYBOARD_ROWS,
-      ['📊 Statistika', '🤖 Claude limiti'],
+      ['📊 Statistika', '🔄 Botni yangilash'],
       ['🏛 Majlis', BOSHQA_TUGMA],
-      ['🔄 Botni yangilash'],
     ],
     resize_keyboard: true,
   };
