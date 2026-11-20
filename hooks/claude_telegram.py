@@ -648,6 +648,109 @@ def ai_ochir():
     return {"ok": False, "xato": "to'xtamadi", "ai": ai_holat()}
 
 
+# ------------------------------------------------------------------ Telegram Desktop qulfini (kod-parol) ochish
+# Bot "▶ Telegram — yoqish" bosilsa agent Telegram'ni "KA_telegram" vazifasi orqali ochadi (ota jarayoni
+# svchost.exe - Task Scheduler). Faqat SHUNDAY yangi ochilgan Telegram oynasiga kod-parol kiritiladi;
+# kompyuterda o'zingiz ochgan Telegram (ota - explorer.exe) qulfligicha qoladi.
+# Kod-parol git'da emas: %LOCALAPPDATA%\ClaudeTelegram\telegram-kod.txt (yo'q bo'lsa - hech narsa qilinmaydi).
+TG_KOD_FAYL = os.environ.get("CLAUDE_TG_KOD_FAYL") or os.path.join(
+    os.environ.get("LOCALAPPDATA", ""), "ClaudeTelegram", "telegram-kod.txt")
+
+
+def jarayonlar():
+    """[(pid, ota_pid, exe_nomi)] - Toolhelp32 snapshot."""
+    from ctypes import wintypes
+
+    class PE(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                    ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+    k32 = ctypes.windll.kernel32
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snap = k32.CreateToolhelp32Snapshot(2, 0)
+    natija = []
+    e = PE()
+    e.dwSize = ctypes.sizeof(PE)
+    ok = k32.Process32FirstW(snap, ctypes.byref(e))
+    while ok:
+        natija.append((e.th32ProcessID, e.th32ParentProcessID, e.szExeFile.lower()))
+        ok = k32.Process32NextW(snap, ctypes.byref(e))
+    k32.CloseHandle(snap)
+    return natija
+
+
+def jarayon_oynasi(pid):
+    from ctypes import wintypes
+    u32 = ctypes.windll.user32
+    topildi = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, _):
+        p = wintypes.DWORD()
+        u32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+        if p.value == pid and u32.IsWindowVisible(hwnd) and u32.GetWindowTextLengthW(hwnd) > 0:
+            topildi.append(hwnd)
+            return False
+        return True
+
+    u32.EnumWindows(cb, 0)
+    return topildi[0] if topildi else None
+
+
+def telegram_kodni_kirit(pid, kod):
+    u32 = ctypes.windll.user32
+    hwnd = None
+    for _ in range(30):  # oyna chiqishini kutamiz
+        hwnd = jarayon_oynasi(pid)
+        if hwnd:
+            break
+        time.sleep(1)
+    if not hwnd:
+        return
+    time.sleep(2.5)  # kod-parol oynasi chizilsin
+    u32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    u32.keybd_event(0x12, 0, 0, 0)  # Alt bosib qo'yish - fon jarayoniga SetForegroundWindow ruxsat beradi
+    u32.SetForegroundWindow(hwnd)
+    u32.keybd_event(0x12, 0, 2, 0)
+    time.sleep(0.7)
+    if u32.GetForegroundWindow() != hwnd:
+        return  # oyna oldinga chiqmadi - boshqa joyga yozib yubormaslik uchun to'xtaymiz
+    for ch in kod:
+        vk = ord(ch.upper())
+        u32.keybd_event(vk, 0, 0, 0)
+        u32.keybd_event(vk, 0, 2, 0)
+        time.sleep(0.05)
+    u32.keybd_event(0x0D, 0, 0, 0)
+    u32.keybd_event(0x0D, 0, 2, 0)
+
+
+def telegram_qulf_tsikl():
+    korilgan = {pid for pid, _o, nom in jarayonlar() if nom == "telegram.exe"}  # oldindan ochiqlar - tegmaymiz
+    while True:
+        time.sleep(3)
+        try:
+            royxat = jarayonlar()
+            nomlar = {pid: nom for pid, _o, nom in royxat}
+            for pid, ota, nom in royxat:
+                if nom != "telegram.exe" or pid in korilgan:
+                    continue
+                korilgan.add(pid)
+                if nomlar.get(ota) != "svchost.exe":
+                    continue  # bot orqali (Task Scheduler) ochilmagan
+                try:
+                    with open(TG_KOD_FAYL, encoding="utf-8") as f:
+                        kod = f.read().strip()
+                except OSError:
+                    continue
+                if kod.isalnum():
+                    telegram_kodni_kirit(pid, kod)
+            korilgan &= set(nomlar)
+        except Exception:
+            pass
+
+
 def vs_tsikl():
     """POST /vs-kut long-poll: "🧩 VS Code" tugmasidan buyruq kelsa - sessiyani ochadi."""
     kutish = 5
@@ -694,6 +797,7 @@ def rejim_kuzat():
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         return
     threading.Thread(target=vs_tsikl, daemon=True).start()
+    threading.Thread(target=telegram_qulf_tsikl, daemon=True).start()
     while True:
         data = {}
         r = jonli_sessiyalar()
