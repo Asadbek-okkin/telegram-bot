@@ -52,7 +52,8 @@ function statusReport() {
   const uptimeSec = os.uptime();
   const h = Math.floor(uptimeSec / 3600);
   const m = Math.floor((uptimeSec % 3600) / 60);
-  return `Kompyuter: ${os.hostname()}\nIshlab turgan vaqt: ${h} soat ${m} daqiqa\nHozirgi vaqt: ${new Date().toLocaleString('uz-UZ')}`;
+  const v = versiya();
+  return `Kompyuter: ${os.hostname()}\nBot versiyasi: ${v.raqam} (${v.sana})\nIshlab turgan vaqt: ${h} soat ${m} daqiqa\nHozirgi vaqt: ${new Date().toLocaleString('uz-UZ')}`;
 }
 
 function appendIdea(text) {
@@ -91,19 +92,81 @@ function mainKeyboard() {
   };
 }
 
-async function handleSelfUpdate() {
-  await tg.sendMessage(CHAT_ID, "Yangilanish tekshirilmoqda (git pull)...");
+// Versiya = commitlar soni (v57 kabi), har yangilanishda o'sadi.
+const YANGILANDI_FAYL = path.join(__dirname, 'data', 'yangilandi.json');
+let joriyOffset = 0; // pollLoop'dagi offset - qayta ishga tushishdan oldin saqlash uchun
+let joriyXabarVaqti = 0; // ishlanayotgan Telegram xabarining vaqti (ms)
+const BOSHLANGAN_VAQT = Date.now();
+
+function git(buyruq) {
+  return execSync(`git ${buyruq}`, { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+}
+
+function versiya() {
   try {
-    const output = execSync('git pull', { cwd: __dirname, encoding: 'utf8' });
-    if (/Already up to date/i.test(output)) {
-      await tg.sendMessage(CHAT_ID, `Yangilanish yo'q, bot allaqachon so'nggi versiyada.\n\n${output.trim()}`);
+    return {
+      raqam: `v${git('rev-list --count HEAD')}`,
+      sana: git('log -1 --format=%cd --date=format:"%d.%m.%Y %H:%M"'),
+      hash: git('rev-parse HEAD'),
+    };
+  } catch {
+    return { raqam: 'v?', sana: '', hash: '' };
+  }
+}
+
+function ozgarishlar(oraliq, max = 10) {
+  try {
+    const qatorlar = git(`log --format=%s ${oraliq}`).split('\n').filter(Boolean);
+    const korsat = qatorlar.slice(0, max).map((q) => `• ${q.length > 120 ? q.slice(0, 119) + '…' : q}`);
+    if (qatorlar.length > max) korsat.push(`… va yana ${qatorlar.length - max} ta`);
+    return korsat.join('\n');
+  } catch {
+    return '';
+  }
+}
+
+async function handleSelfUpdate() {
+  const eski = versiya();
+  await tg.sendMessage(CHAT_ID, `🔄 Yangilanish tekshirilmoqda…\n📦 Hozirgi versiya: ${eski.raqam}`);
+  try {
+    git('fetch --quiet');
+    const masofaviy = git('rev-parse @{u}');
+    if (masofaviy === eski.hash) {
+      await tg.sendMessage(
+        CHAT_ID,
+        `✅ Bot so'nggi versiyada — yangilash shart emas.\n\n📦 Versiya: ${eski.raqam}\n📅 ${eski.sana}\n\nOxirgi o'zgarish:\n${ozgarishlar('-1')}`,
+      );
       return;
     }
-    await tg.sendMessage(CHAT_ID, `Yangilandi:\n${output.trim()}\n\nBot qayta ishga tushmoqda...`);
-    process.exit(0); // start-bot-loop.ps1 avtomatik qayta ishga tushiradi
+    const yangiliklar = ozgarishlar('HEAD..@{u}');
+    git('pull --ff-only --quiet');
+    const yangi = versiya();
+    try {
+      fs.mkdirSync(path.dirname(YANGILANDI_FAYL), { recursive: true });
+      fs.writeFileSync(YANGILANDI_FAYL, JSON.stringify({ eski: eski.raqam, yangi: yangi.raqam, yangiliklar }));
+    } catch {}
+    await tg.sendMessage(
+      CHAT_ID,
+      `⬇️ Yangi versiya yuklandi: ${eski.raqam} → ${yangi.raqam}\n\nNimalar o'zgardi:\n${yangiliklar || '• (izoh yo\'q)'}\n\n♻️ Bot qayta ishga tushmoqda…`,
+    );
+    // shu "Botni yangilash" bosilishini o'qilgan deb belgilaymiz - aks holda qayta ishga tushgach Telegram
+    // uni yana yuboradi va bot ikkinchi marta tekshirib "so'nggi versiyada" deb chiqarardi.
+    setOffset(joriyOffset);
+    process.exit(0); // systemd avtomatik qayta ishga tushiradi
   } catch (e) {
-    await tg.sendMessage(CHAT_ID, `Yangilashda xato:\n${e.message}`);
+    await tg.sendMessage(CHAT_ID, `❌ Yangilashda xato:\n${(e.stderr || e.message || '').toString().trim().slice(0, 1500)}`);
   }
+}
+
+function ishgaTushishXabari() {
+  const v = versiya();
+  let y = null;
+  try {
+    y = JSON.parse(fs.readFileSync(YANGILANDI_FAYL, 'utf8'));
+    fs.unlinkSync(YANGILANDI_FAYL);
+  } catch {}
+  if (y) return `✅ Bot yangilandi va ishga tushdi!\n\n📦 Versiya: ${y.eski} → ${v.raqam}\n📅 ${v.sana}`;
+  return `🟢 Bot ishga tushdi\n📦 Versiya: ${v.raqam} (${v.sana})`;
 }
 
 async function handleAiChat(text) {
@@ -137,6 +200,9 @@ async function handleText(text) {
       await tg.sendMessage(CHAT_ID, ideasArchiveReport());
       return;
     case '🔄 Botni yangilash':
+      // bot ishga tushishidan oldin bosilgan (qayta yuborilgan) tugma - yangilash allaqachon bo'ldi,
+      // ishga tushish xabari versiyani ko'rsatgan; qayta tekshirib chalkashtirmaymiz
+      if (joriyXabarVaqti && joriyXabarVaqti < BOSHLANGAN_VAQT) return;
       await handleSelfUpdate();
       return;
     case '/start':
@@ -158,11 +224,7 @@ async function pollLoop() {
     return;
   }
   console.log('Telegram bot: tinglash boshlandi (darrov javob beradi).');
-  await tg.sendMessage(
-    CHAT_ID,
-    "Bot yangilandi! Endi botga oddiy xabar yozsangiz Claude AI javob beradi. Mebel kanali boshqaruvi ham shu botda: mavzu/post/autoposting/kalit so'z/guruhlar.",
-    { reply_markup: mainKeyboard() }
-  );
+  await tg.sendMessage(CHAT_ID, ishgaTushishXabari(), { reply_markup: mainKeyboard() });
   moderator.startAutopostLoop();
   kompyuter.startKuzatuv(CHAT_ID);
   let offset = getOffset();
@@ -173,6 +235,7 @@ async function pollLoop() {
       if (resp && resp.ok && resp.result) {
         for (const update of resp.result) {
           offset = Math.max(offset, update.update_id + 1);
+          joriyOffset = offset;
           if (update.callback_query) {
             const cq = update.callback_query;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSavol.handleCallback(cq))) continue;
@@ -190,7 +253,10 @@ async function pollLoop() {
             if (message.text && (await claudeSessiya.handleFallback(message))) continue;
             if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) continue;
             if (message.photo) await moderator.handlePhoto(message);
-            else if (message.text) await handleText(message.text);
+            else if (message.text) {
+              joriyXabarVaqti = (message.date || 0) * 1000;
+              await handleText(message.text);
+            }
           } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
             await moderator.handleGroupMessage(message);
           }
