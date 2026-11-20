@@ -199,4 +199,11 @@ async function faylYubor(chatId, url, nom, caption) {
   if (!res || !res.ok) throw new Error((res && res.description) || 'sendDocument xato');
 }
 
-module.exports = { TUGMA, handleText, begona, start, faylYubor };
+/** Foydalanuvchi fikridagi skrinshotni adminga yuborish. */
+async function rasmYubor(chatId, buf, caption) {
+  const nom = buf[0] === 0x89 ? 'skrinshot.png' : 'skrinshot.jpg';
+  const res = await hujjatYubor(chatId, buf, nom, caption, 'sendPhoto', 'photo', buf[0] === 0x89 ? 'image/png' : 'image/jpeg');
+  if (!res || !res.ok) throw new Error((res && res.description) || 'sendPhoto xato');
+}
+
+module.exports = { TUGMA, handleText, begona, start, faylYubor, rasmYubor };

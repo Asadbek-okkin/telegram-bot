@@ -252,10 +252,15 @@ function sozniOchir(s) {
 
 function handleHttp(req, res) {
   const url = req.url.split('?')[0].replace(/\/+$/, '');
-  const m = url.match(/\/klaviatura\/(sozlar|fikr|lugat|ovoz|admin\/[a-z]+)$/);
+  const m = url.match(/\/klaviatura\/(sozlar|fikr|lugat|ovoz|aloqa|admin\/[a-z]+)$/);
   if (!m) return false;
   yuklash();
   if (m[1].startsWith('admin/')) { adminHttp(req, res, m[1]); return true; }
+  if (m[1] === 'aloqa' && req.method === 'GET') {
+    // ilovadagi «Adminga yozish» tugmasi shu Telegram akkauntni ochadi
+    json(res, 200, { telegram: aloqa.admin, bot: aloqa.bot });
+    return true;
+  }
   if (m[1] === 'lugat' && req.method === 'GET') {
     json(res, 200, { versiya: lugat.versiya, sozlar: lugat.sozlar });
     return true;
@@ -263,7 +268,7 @@ function handleHttp(req, res) {
   if (req.method !== 'POST') { res.writeHead(405); res.end(); return true; }
   if (m[1] === 'ovoz') { ovozQabul(req, res); return true; }
   if (!ruxsatmi(req)) { json(res, 429, { xato: "ko'p so'rov" }); return true; }
-  const max = m[1] === 'fikr' ? 8000 : 20000;
+  const max = m[1] === 'fikr' ? 2200000 : 20000; // fikrda skrinshot bo'lishi mumkin
   tanaOl(req, max).then((b) => {
     if (!b || !Q_RE.test(String(b.q || ''))) return json(res, 400, { xato: "noto'g'ri so'rov" });
     const q = String(b.q);
@@ -285,7 +290,7 @@ function handleHttp(req, res) {
     const tur = b.tur === 'xato' ? 'xato' : 'fikr';
     const matn = String(b.matn || '').trim().slice(0, 3500);
     if (!matn) return json(res, 400, { xato: "bo'sh" });
-    yigim.fikrlar.push({ vaqt: Date.now(), tur, v: String(b.v || '').slice(0, 20), a: String(b.a || '').slice(0, 40), matn: matn.slice(0, 1500) });
+    yigim.fikrlar.push({ vaqt: Date.now(), tur, v: String(b.v || '').slice(0, 20), a: String(b.a || '').slice(0, 40), matn: (b.rasm ? '📷 ' : '') + matn.slice(0, 1500) });
     if (yigim.fikrlar.length > 500) yigim.fikrlar = yigim.fikrlar.slice(-500);
     saqla();
     json(res, 200, { ok: true });
@@ -297,7 +302,19 @@ function handleHttp(req, res) {
         xatoEslatildi.set(kalit, Date.now());
         tg.sendMessage(ADMIN, `🐞 Klaviatura xatosi (v${b.v || '?'}, ${b.a || 'Android ?'})\n\n${matn.slice(0, 1500)}`).catch(() => {});
       } else {
-        tg.sendMessage(ADMIN, `💬 Klaviatura haqida fikr (v${b.v || '?'})\n\n${matn}`).catch(() => {});
+        let rasm = null;
+        if (typeof b.rasm === 'string' && b.rasm.length < 2100000) {
+          const buf = Buffer.from(b.rasm, 'base64');
+          // faqat haqiqiy JPEG/PNG rasm qabul qilinadi
+          if (buf.length > 100 && ((buf[0] === 0xff && buf[1] === 0xd8) || (buf[0] === 0x89 && buf[1] === 0x50))) rasm = buf;
+        }
+        const sarlavha = `💬 Klaviatura haqida fikr (v${b.v || '?'}, ${b.a || ''})\n\n${matn}`;
+        if (rasm) {
+          require('./klaviatura').rasmYubor(ADMIN, rasm, sarlavha.slice(0, 1000))
+            .catch(() => tg.sendMessage(ADMIN, sarlavha + '\n\n(skrinshotni yuborib bo\'lmadi)').catch(() => {}));
+        } else {
+          tg.sendMessage(ADMIN, sarlavha).catch(() => {});
+        }
       }
     }
     return undefined;
@@ -379,8 +396,13 @@ async function handleText(chatId, text) {
   return false;
 }
 
+const aloqa = { admin: null, bot: null };
+
 function start(adminChatId) {
   ADMIN = adminChatId;
+  // «Adminga yozish» uchun adminning Telegram username'i va bot nomi (Telegram'dan olinadi)
+  tg.apiCall('getChat', { chat_id: ADMIN }).then((r) => { if (r && r.ok) aloqa.admin = r.result.username || null; }).catch(() => {});
+  tg.apiCall('getMe', {}).then((r) => { if (r && r.ok) aloqa.bot = r.result.username || null; }).catch(() => {});
   yuklash();
   setInterval(() => {
     if (Date.now() - (yigim.oxirgiReja || 0) >= REJA_MS) reja(false).catch((e) => console.error('klaviatura reja:', e.message));
