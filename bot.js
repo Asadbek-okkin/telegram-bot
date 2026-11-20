@@ -84,8 +84,9 @@ function mainKeyboard() {
     keyboard: [
       [...kompyuter.KEYBOARD_ROWS[0], '🛡 Botlar'],
       ...claudeSessiya.KEYBOARD_ROWS,
-      ['📊 Statistika', '🔄 Botni yangilash'],
+      ['📊 Statistika', '🤖 Claude limiti'],
       ['🏛 Majlis', BOSHQA_TUGMA],
+      ['🔄 Botni yangilash'],
     ],
     resize_keyboard: true,
   };
@@ -220,6 +221,7 @@ async function handleText(text) {
   if (await claudeSessiya.handleText(CHAT_ID, text)) return;
   if (await statistika.handleText(CHAT_ID, text)) return; // 📊 Statistika (moderatorniki o'rniga)
   if (await botlar.handleText(CHAT_ID, text)) return; // 🛡 Botlar
+  if (await require('./claude-limit').handleText(CHAT_ID, text)) return; // 📊 /limit - Claude limiti
   if (await agentlar.handleText(CHAT_ID, text)) return; // 🏛 Majlis, /bot_qosh, /jamoa
   if (await moderator.handleText(text)) return;
   switch (text) {
@@ -306,6 +308,7 @@ async function pollLoop() {
   kompyuter.startKuzatuv(CHAT_ID);
   botlar.start(CHAT_ID, claudeSessiya.kuzatuvchigaBuyruq);
   yangiVersiyaKuzat();
+  require('./claude-limit').start(CHAT_ID, botlar.guruhniOl);
   agentlar.start(CHAT_ID, botlar.guruhniOl, botlar.guruhHolati); // 🏛 kunlik majlis
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition

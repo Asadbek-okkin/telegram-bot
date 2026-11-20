@@ -971,6 +971,9 @@ def rejim_kuzat():
             data["botlar"] = kompyuter_botlar_holati()
         except Exception:
             pass
+        lim = limit_oqi()  # 📊 Claude limitlari (statusLine yozgan)
+        if lim:
+            data["claude_limit"] = lim
         if data:
             try:
                 post("/holat", data, timeout=15)
@@ -979,10 +982,56 @@ def rejim_kuzat():
         time.sleep(30)
 
 
+# ------------------------------------------------------------------ 📊 Claude limitlari (statusLine orqali)
+# Claude Code status qatoriga (settings.json "statusLine") rasmiy rate_limits beradi: five_hour / seven_day
+# used_percentage va resets_at. Shu yerda faylga yoziladi; kuzatuvchi uni serverga (@claude_asadbek_bot) yuboradi.
+# Kirish kaliti o'qilmaydi - faqat Claude Code'ning o'zi bergan foizlar.
+LIMIT_FAYL = os.path.join(HOLAT_PAPKA, "limit.json")
+
+
+def rejim_statusline():
+    try:
+        d = json.loads(sys.stdin.buffer.read().decode("utf-8") or "{}")
+    except Exception:
+        d = {}
+    rl = d.get("rate_limits") or {}
+    qism = []
+    if rl:
+        yoz = {"vaqt": int(time.time())}
+        for k in ("five_hour", "seven_day"):
+            w = rl.get(k) or {}
+            if w.get("used_percentage") is not None:
+                yoz[k] = {"foiz": float(w["used_percentage"]), "tiklanadi": w.get("resets_at")}
+        try:
+            os.makedirs(HOLAT_PAPKA, exist_ok=True)
+            vaqtinch = LIMIT_FAYL + ".tmp"
+            with open(vaqtinch, "w", encoding="utf-8") as f:
+                json.dump(yoz, f)
+            os.replace(vaqtinch, LIMIT_FAYL)
+        except Exception:
+            pass
+        if "seven_day" in yoz:
+            qism.append(f"Hafta {yoz['seven_day']['foiz']:.0f}%")
+        if "five_hour" in yoz:
+            qism.append(f"5 soat {yoz['five_hour']['foiz']:.0f}%")
+    model = (d.get("model") or {}).get("display_name") or ""
+    sys.stdout.buffer.write(" · ".join([x for x in [model] + qism if x]).encode("utf-8"))
+
+
+def limit_oqi():
+    try:
+        with open(LIMIT_FAYL, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
 def main():
     if os.environ.get("PM_TELEGRAM_APPROVAL_ENABLED") == "0":
         return
     rejim = sys.argv[1] if len(sys.argv) > 1 else ""
+    if rejim == "statusline":
+        return rejim_statusline()
     if rejim == "kuzat":
         return rejim_kuzat() if kalit() else None
     try:

@@ -317,7 +317,8 @@ async function vsNatija(n) {
 }
 
 function holatKeldi(b) {
-  if (b.botlar) require('./botlar').kompyuterdanKeldi(b.botlar); // 🛡 Botlar: kompyuterdagi botlar holati
+  if (b.botlar) require('./botlar').kompyuterdanKeldi(b.botlar);
+  if (b.claude_limit) require('./claude-limit').keldi(b.claude_limit); // 📊 Claude haftalik/5 soatlik limit // 🛡 Botlar: kompyuterdagi botlar holati
   if (b.ai && typeof b.ai === 'object') {
     aiHolat = {
       ishlayapti: !!b.ai.ishlayapti,

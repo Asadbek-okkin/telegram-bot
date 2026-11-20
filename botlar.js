@@ -270,6 +270,10 @@ async function handleGroupMessage(message) {
     await guruhRasminiQoy();
     return true;
   }
+  if (id === guruhId && buyruq === '/limit') {
+    await tg.sendMessage(id, require('./claude-limit').matn());
+    return true;
+  }
   if (id === guruhId && buyruq === '/statistika') {
     await tg.sendMessage(id, require('./statistika').botlarHisoboti(7));
     return true;
@@ -372,6 +376,7 @@ async function ertalabkiHisobot() {
   if (t < '09:00' || t > '09:10' || oxirgiErtalab === kun) return;
   oxirgiErtalab = kun;
   await tg.sendMessage(guruhId, `☀️ Xayrli tong, jamoa! 👋\n\n${await guruhHolati()}`);
+  await tg.sendMessage(guruhId, require('./claude-limit').matn());
 }
 
 function start(chatId, buyruqFn) {
