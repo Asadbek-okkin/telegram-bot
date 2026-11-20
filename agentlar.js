@@ -111,6 +111,10 @@ async function buyruqAjrat(message) {
   const t = String(message.text || message.caption || '').trim();
   const u = await username();
   if (/^\/(v|vazifa)(@\w+)?(\s|$)/i.test(t)) return t.replace(/^\/\w+(@\w+)?\s*/i, '');
+  // "Vazifa: ..." / "Claude, ..." - oddiy matn: boshqa botlar (privacy rejimida) buni umuman ko'rmaydi,
+  // "/v" esa guruhga oxirgi yozgan botga ham boradi (masalan BazisUsta javob qaytaradi)
+  const m = t.match(/^(vazifa|claude)\s*[:,]\s*([\s\S]+)/i);
+  if (m) return m[2].trim();
   const re = new RegExp(`@${u}\\b`, 'i');
   if (re.test(t)) return t.replace(re, '').trim();
   const r = message.reply_to_message;
