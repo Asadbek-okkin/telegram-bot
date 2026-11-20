@@ -242,6 +242,22 @@ async function handleGroupMessage(message) {
     await tg.sendMessage(id, await guruhHolati());
     return true;
   }
+  if (id === guruhId && buyruq === '/statistika') {
+    await tg.sendMessage(id, require('./statistika').hisobot(7));
+    return true;
+  }
+  // 🤝 jamoaga buyruq (agentlar.js) - hozircha faqat egasidan
+  if (id === guruhId && egasi) {
+    const agentlar = require('./agentlar');
+    const vazifa = await agentlar.buyruqAjrat(message);
+    if (vazifa) {
+      tg.reaksiya(id, message.message_id, '👀');
+      agentlar.bajar(id, vazifa, guruhHolati)
+        .then(() => tg.reaksiya(id, message.message_id, '👌'))
+        .catch((e) => { console.error('agentlar:', e.message); tg.reaksiya(id, message.message_id, '🤷'); });
+      return true;
+    }
+  }
   return false;
 }
 

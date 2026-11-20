@@ -24,6 +24,13 @@ const TURLAR = {
   post: '📢 Kanal posti',
   goya: "💡 G'oya yozildi",
   mavzu: '🔎 Guruhdan mavzu topildi',
+  agent_claude: '🤝 Claude Asadbek vazifa bajardi',
+  agent_avtobot: '🤝 Avtobot vazifa bajardi',
+  agent_jarvis: '🤝 Jarvis vazifasi',
+  agent_gps: '🤝 GPS vazifasi',
+  agent_bazis: '🤝 BazisUsta vazifasi',
+  agent_pult: '🤝 Control Pult vazifasi',
+  agent_pultcam: '🤝 Pultcam vazifasi',
 };
 
 function bugunKalit(ms = Date.now()) {
