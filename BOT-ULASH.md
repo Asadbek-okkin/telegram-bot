@@ -43,3 +43,9 @@ Tayyor. Tekshirish: shaxsiy chatda `/jamoa` — bot 🟢 ulangan bo'lishi kerak.
 | Shaxsiy | `🏛 Majlis` tugmasi | Kun tartibi, majlisni hozir boshlash |
 | Shaxsiy | `/majlis_vazifa ...`, `/majlis_soat 09:30` | Vazifa qo'shish, kunlik majlis vaqti |
 | Shaxsiy | `/bot_qosh`, `/bot_ochir id`, `/jamoa` | Botlarni ulash/chiqarish/ko'rish |
+
+## 🆕 Yangi versiya xabari
+
+Har bir bot GitHub'dagi yangi versiyani 10 daqiqada bir tekshiradi va adminiga «🆕 Yangi versiya chiqdi — yangilang!»
+xabarini «🔄 Yangilash» tugmasi bilan yuboradi. Serverdagi git'siz botlar (BazisUsta, GPS) uchun xabarni Claude Asadbek
+yuboradi (`/usr/local/sbin/bot-yangila`). Yangi bot ulasangiz — unga ham shu xabarni qo'shing.
