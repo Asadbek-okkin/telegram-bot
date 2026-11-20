@@ -85,7 +85,7 @@ function mainKeyboard() {
       [...kompyuter.KEYBOARD_ROWS[0], '🛡 Botlar'],
       ...claudeSessiya.KEYBOARD_ROWS,
       ['📊 Statistika', '🔄 Botni yangilash'],
-      ['🏛 Majlis', '⌨️ Klaviatura', BOSHQA_TUGMA],
+      ['🏛 Majlis', BOSHQA_TUGMA],
     ],
     resize_keyboard: true,
   };

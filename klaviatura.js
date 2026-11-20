@@ -1,5 +1,5 @@
 /* ⌨️ Sof Özbek klaviatura — APK'ni Telegram orqali tarqatish va yangilash.
-   - Admin: «⌨️ Klaviatura» tugmasi yoki /klaviatura -> oxirgi versiya APK fayli.
+   - Admin: tugma yo'q (foydalanuvchi talabi) - bot yangi versiyani o'zi yuboradi; kerak bo'lsa /klaviatura.
    - Har kim (shaxsiy chatda): /start yoki /klaviatura -> APK + obuna bo'ladi.
    - Har 30 daqiqada GitHub relizini tekshiradi (reliz.js keshi orqali); yangi versiya chiqsa
      adminga va barcha obunachilarga APK avtomatik yuboriladi.
@@ -133,12 +133,12 @@ async function tekshir() {
   try { r = await oxirgi(); } catch (e) { return; }
   if (!r.tag || !r.url) return;
   const d = oqi();
-  if (!d.tag) { d.tag = r.tag; yoz(d); return; }
   if (d.tag === r.tag) return;
+  // birinchi marta (hali hech narsa yuborilmagan) - faqat adminga; keyin - hammaga
+  const kimlar = d.tag ? [ADMIN, ...(d.obunachilar || [])] : [ADMIN];
   d.tag = r.tag;
   yoz(d);
-  const kimlar = [ADMIN, ...(d.obunachilar || [])].filter(Boolean);
-  for (const id of [...new Set(kimlar)]) {
+  for (const id of [...new Set(kimlar.filter(Boolean))]) {
     try { await yubor(id, r, '🆕 Yangi versiya chiqdi!'); } catch (e) { console.error('klaviatura yangi versiya', id, e.message); }
     await new Promise((res) => setTimeout(res, 300));
   }
