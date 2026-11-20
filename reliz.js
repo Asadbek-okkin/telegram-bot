@@ -10,6 +10,8 @@ const REPOLAR = {
   'sof-ozbek-klaviatura': 'Asadbek-okkin/sof-ozbek-klaviatura', // ⌨️ telefon klaviaturasi (klaviatura.js)
 };
 const KESH_MS = 60 * 60 * 1000;
+// klaviatura yangilanishi tez yetib borsin: 10 daqiqa (soatiga 6 so'rov - GitHub limiti 60 dan ancha kam)
+const KESH_REPO_MS = { 'sof-ozbek-klaviatura': 10 * 60 * 1000 };
 const kesh = {}; // repo -> {vaqt, matn}
 
 function ol(url) {
@@ -24,7 +26,7 @@ function ol(url) {
 
 async function reliz(repo) {
   const k = kesh[repo];
-  if (k && Date.now() - k.vaqt < KESH_MS) return k.matn;
+  if (k && Date.now() - k.vaqt < (KESH_REPO_MS[repo] || KESH_MS)) return k.matn;
   try {
     const r = JSON.parse(await ol(`https://api.github.com/repos/${REPOLAR[repo]}/releases/latest`));
     for (const a of r.assets || []) if (a.browser_download_url) a.url = a.browser_download_url;
