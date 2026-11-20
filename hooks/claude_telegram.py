@@ -342,13 +342,20 @@ def transkript_mavzusi(yol):
     except Exception:
         return ""
     oxirgi_prompt = ""
+    ai_nom = ""
     for q in reversed(dum):
-        if '"ai-title"' in q or '"custom-title"' in q:
+        # Qo'lda qo'yilgan nom (/rename, custom-title) har doim AI nomidan ustun:
+        # Claude Code ai-title'ni vaqti-vaqti bilan qayta yozadi, u custom nomni bosib ketmasin.
+        if '"custom-title"' in q:
             try:
-                e = json.loads(q)
-                t = e.get("customTitle") or e.get("aiTitle")
+                t = json.loads(q).get("customTitle")
                 if t:
                     return t
+            except Exception:
+                pass
+        elif not ai_nom and '"ai-title"' in q:
+            try:
+                ai_nom = json.loads(q).get("aiTitle") or ""
             except Exception:
                 pass
         if not oxirgi_prompt and '"last-prompt"' in q:
@@ -356,6 +363,8 @@ def transkript_mavzusi(yol):
                 oxirgi_prompt = json.loads(q).get("lastPrompt", "")
             except Exception:
                 pass
+    if ai_nom:
+        return ai_nom
     return qisqa(oxirgi_prompt, 80) if oxirgi_prompt else ""
 
 
