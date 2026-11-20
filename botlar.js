@@ -261,6 +261,11 @@ async function handleGroupMessage(message) {
     await tg.sendMessage(id, await guruhHolati());
     return true;
   }
+  if (id === guruhId && egasi && buyruq === '/guruh_rasmi') {
+    try { fs.unlinkSync(RASM_BELGI); } catch {}
+    await guruhRasminiQoy();
+    return true;
+  }
   if (id === guruhId && buyruq === '/statistika') {
     await tg.sendMessage(id, require('./statistika').botlarHisoboti(7));
     return true;
@@ -280,6 +285,48 @@ function guruhniOl() {
   return guruhId;
 }
 
+// 🖼 Guruh rasmi: deploy/avtobotlar-guruh.jpg o'zgarsa (yoki hali qo'yilmagan bo'lsa) - guruhga o'rnatiladi.
+// setChatPhoto faylni multipart bilan talab qiladi (file_id/url emas). Bot adminda "guruh ma'lumotini o'zgartirish" ruxsati kerak.
+const GURUH_RASM = path.join(__dirname, 'deploy', 'avtobotlar-guruh.jpg');
+const RASM_BELGI = path.join(__dirname, 'data', 'guruh-rasmi.txt');
+
+function setChatPhoto(chatId, fayl) {
+  const https = require('https');
+  return new Promise((resolve) => {
+    const chegara = '----rasm' + Date.now();
+    const data = fs.readFileSync(fayl);
+    const bosh = Buffer.from(`--${chegara}\r\nContent-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}\r\n`
+      + `--${chegara}\r\nContent-Disposition: form-data; name="photo"; filename="rasm.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`);
+    const oxir = Buffer.from(`\r\n--${chegara}--\r\n`);
+    const tana = Buffer.concat([bosh, data, oxir]);
+    const req = https.request({ hostname: 'api.telegram.org', path: `/bot${tg.TOKEN}/setChatPhoto`, method: 'POST',
+      headers: { 'Content-Type': `multipart/form-data; boundary=${chegara}`, 'Content-Length': tana.length } }, (res) => {
+      let s = '';
+      res.on('data', (c) => { s += c; });
+      res.on('end', () => { try { resolve(JSON.parse(s)); } catch { resolve({ ok: false, description: s.slice(0, 200) }); } });
+    });
+    req.on('error', (e) => resolve({ ok: false, description: e.message }));
+    req.write(tana);
+    req.end();
+  });
+}
+
+async function guruhRasminiQoy() {
+  if (!guruhId || !fs.existsSync(GURUH_RASM)) return;
+  const belgi = `${guruhId}:${require('crypto').createHash('sha1').update(fs.readFileSync(GURUH_RASM)).digest('hex')}`;
+  let eski = '';
+  try { eski = fs.readFileSync(RASM_BELGI, 'utf8').trim(); } catch {}
+  if (eski === belgi) return;
+  const r = await setChatPhoto(guruhId, GURUH_RASM);
+  if (r.ok) {
+    fs.writeFileSync(RASM_BELGI, belgi);
+    await tg.sendMessage(CHAT_ID, '🖼 Botlar guruhiga yangi rasm qo\'yildi ✅');
+  } else {
+    await tg.sendMessage(CHAT_ID, `🖼 Guruh rasmini qo'yib bo'lmadi: ${r.description || 'xato'}\n`
+      + "Guruhda Claude Asadbek adminligida «Изменение профиля группы» ruxsatini yoqing, so'ng guruhga /guruh_rasmi yozing.");
+  }
+}
+
 let oxirgiErtalab = '';
 async function ertalabkiHisobot() {
   if (!guruhId) return;
@@ -295,6 +342,7 @@ function start(chatId, buyruqFn) {
   buyruqYuboruvchi = buyruqFn;
   setTimeout(() => {
     tekshir().catch(() => {});
+    guruhRasminiQoy().catch((e) => console.error('guruh rasmi:', e.message));
     setInterval(() => {
       tekshir().catch((e) => console.error('botlar tekshir:', e.message));
       ertalabkiHisobot().catch((e) => console.error('botlar ertalab:', e.message));
