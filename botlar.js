@@ -14,7 +14,7 @@ const BOTLAR = [
   { id: 'bazis', nomi: 'BazisUstaAIBot', joy: 'server', unitlar: ['bazis-usta', 'bazis-usta-bot', 'bazisusta'] },
   { id: 'jarvis', nomi: 'JarvisAsadbekBot', joy: 'kompyuter' },
   { id: 'pult', nomi: 'Control Pult', joy: 'noma\'lum' },
-  { id: 'pultcam', nomi: 'Pultcam', joy: 'noma\'lum' },
+  { id: 'pultcam', nomi: 'Pultcam (Kamera AI)', joy: 'kompyuter' },
 ];
 
 let CHAT_ID = null;

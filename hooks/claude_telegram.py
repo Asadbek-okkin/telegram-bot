@@ -803,16 +803,27 @@ KOMPYUTER_BOTLAR = {
         "belgi": "bot.py",  # ishlayapti = buyruq qatorida shu bor jarayon bor
         "log": r"D:\jarvis\malumot\jarvis.log",
         "yoqish": ["wscript.exe", r"D:\jarvis\jarvis_fonda.vbs"],
+        "tiklash": True,  # kompyuter yoniq ekan doim ishlasin: to'xtab qolsa kuzatuvchi o'zi qayta yoqadi
+    },
+    "pultcam": {  # Kamera AI (@Pultcam): o'rnatilgan dastur, Windows'ga kirganda Startup'dan yonadi
+        "papka": os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "KameraAI"),
+        "exe": "KameraAI*",
+        "belgi": "KameraAI",
+        "log": os.path.join(os.environ.get("LOCALAPPDATA", ""), "KameraAI", "dastur.log"),
+        "yoqish": [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "KameraAI", "KameraAI.exe"), "--oynasiz", "--fon"],
+        "tiklash": True,
     },
 }
+_toxtatilgan = set()  # bot orqali ataylab to'xtatilganlar - o'zi qayta yoqilmaydi
+_jim_sanoq = {}  # nom -> ketma-ket "ishlamayapti" tekshiruvlari
 
 
-def papka_jarayonlari(papka):
-    """[(pid, buyruq_qatori)] - exe shu papka ichida bo'lgan python jarayonlari."""
+def papka_jarayonlari(papka, exe="python*"):
+    """[(pid, buyruq_qatori)] - exe shu papka ichida bo'lgan jarayonlar (standart: python)."""
     import subprocess
     naqsh = papka.rstrip("\\") + "\\*"
-    buyruq = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.ExecutablePath -like '%s' } | "
-              "ForEach-Object { '' + $_.ProcessId + '|' + $_.CommandLine }") % naqsh
+    buyruq = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like '%s' -and $_.ExecutablePath -like '%s' } | "
+              "ForEach-Object { '' + $_.ProcessId + '|' + $_.CommandLine }") % (exe, naqsh)
     out = subprocess.run(["powershell", "-NoProfile", "-Command", buyruq], capture_output=True,
                          creationflags=NO_WINDOW, timeout=30).stdout.decode("utf-8", "ignore")
     natija = []
@@ -834,11 +845,26 @@ def log_dumi(yol, n=15):
         return ""
 
 
+def _ishlayaptimi(c):
+    return any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"], c.get("exe", "python*")))
+
+
 def kompyuter_botlar_holati():
+    """Har 30 s: holat + log. "tiklash" botlari 2 tekshiruv (≈1 daqiqa) ishlamasa - o'zi qayta yoqiladi."""
     natija = {}
     for nom, c in KOMPYUTER_BOTLAR.items():
-        j = papka_jarayonlari(c["papka"])
-        natija[nom] = {"ishlayapti": any(c["belgi"] in cmd for _p, cmd in j), "log": log_dumi(c["log"])}
+        if not os.path.isdir(c["papka"]):
+            continue
+        ish = _ishlayaptimi(c)
+        _jim_sanoq[nom] = 0 if ish else _jim_sanoq.get(nom, 0) + 1
+        if not ish and c.get("tiklash") and nom not in _toxtatilgan and _jim_sanoq[nom] >= 2:
+            _jim_sanoq[nom] = -6  # yoqilgach ~3 daqiqa kutamiz, takror-takror urinmasin
+            try:
+                import subprocess
+                subprocess.Popen(c["yoqish"], cwd=c["papka"], creationflags=NO_WINDOW)
+            except Exception:
+                pass
+        natija[nom] = {"ishlayapti": ish, "log": log_dumi(c["log"])}
     return natija
 
 
@@ -847,20 +873,25 @@ def kompyuter_bot_amal(nom, qil):
     c = KOMPYUTER_BOTLAR.get(nom)
     if not c or qil not in ("start", "stop", "restart"):
         return {"ok": False, "xato": "noma'lum bot yoki buyruq"}
+    exe = c.get("exe", "python*")
+    if qil == "stop":
+        _toxtatilgan.add(nom)
+    else:
+        _toxtatilgan.discard(nom)
     if qil in ("stop", "restart"):
-        for pid, _cmd in papka_jarayonlari(c["papka"]):
+        for pid, _cmd in papka_jarayonlari(c["papka"], exe):
             subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], capture_output=True, creationflags=NO_WINDOW)
         time.sleep(2)
     if qil in ("start", "restart"):
-        if any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"])):
+        if _ishlayaptimi(c):
             return {"ok": True}
         subprocess.Popen(c["yoqish"], cwd=c["papka"], creationflags=NO_WINDOW)
         for _ in range(20):
             time.sleep(2)
-            if any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"])):
+            if _ishlayaptimi(c):
                 return {"ok": True}
         return {"ok": False, "xato": "40 soniyada ishga tushmadi"}
-    ok = not papka_jarayonlari(c["papka"])
+    ok = not papka_jarayonlari(c["papka"], exe)
     return {"ok": ok, "xato": "" if ok else "to'xtamadi"}
 
 
