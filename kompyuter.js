@@ -174,6 +174,7 @@ function kalitTogri(berilgan) {
 function serverniBoshla() {
   const srv = http.createServer((req, res) => {
     if (require('./reliz').handleHttp(req, res)) return; // GitHub reliz oynasi (Kamera AI yangilanishi)
+    if (require('./klaviatura-xizmat').handleHttp(req, res)) return; // ⌨️ klaviatura: fikrlar, yangi so'zlar, lug'at
     if (claudeSavol.handleHttp(req, res, kalitTogri)) return; // Claude Code savollari (claude-savol.js)
     if (claudeSessiya.handleHttp(req, res, kalitTogri)) return; // Claude Code sessiyalari (claude-sessiya.js)
     if (req.method === 'POST' && req.url.replace(/\/+$/, '').endsWith('/uygotuvchi')) {

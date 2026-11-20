@@ -225,6 +225,7 @@ async function handleText(text) {
   if (await agentlar.handleText(CHAT_ID, text)) return; // 🏛 Majlis, /bot_qosh, /jamoa
   if (await require('./miya').handleText(CHAT_ID, text)) return; // 🧠 /miya, /miya_ulash, /miya_gemini
   if (await require('./klaviatura').handleText(CHAT_ID, text)) return; // ⌨️ Sof Özbek klaviatura APK
+  if (await require('./klaviatura-xizmat').handleText(CHAT_ID, text)) return; // ⌨️ /klaviatura_hisobot, /lugat_ochir
   if (await moderator.handleText(text)) return;
   switch (text) {
     case "💡 G'oya yozaman":
@@ -313,6 +314,7 @@ async function pollLoop() {
   require('./claude-limit').start(CHAT_ID, botlar.guruhniOl);
   agentlar.start(CHAT_ID, botlar.guruhniOl, botlar.guruhHolati); // 🏛 kunlik majlis
   require('./klaviatura').start(CHAT_ID); // ⌨️ klaviatura yangi versiyasini obunachilarga yuboradi
+  require('./klaviatura-xizmat').start(CHAT_ID); // ⌨️ 4 kunlik reja: yangi so'zlar va fikrlar hisoboti
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition
   while (true) {
