@@ -58,4 +58,17 @@ function getUpdates(offset) {
   });
 }
 
-module.exports = { TOKEN, apiCall, sendMessage, sendPhoto, editMessageText, answerCallbackQuery, getUpdates };
+// Telegram'dagi faylni (masalan ovozli xabarni) yuklab olish -> Buffer
+async function faylYukla(fileId) {
+  const r = await apiCall('getFile', { file_id: fileId });
+  if (!r || !r.ok) throw new Error('getFile xato');
+  return new Promise((resolve, reject) => {
+    https.get(`https://api.telegram.org/file/bot${TOKEN}/${r.result.file_path}`, (res) => {
+      const ch = [];
+      res.on('data', (c) => ch.push(c));
+      res.on('end', () => resolve(Buffer.concat(ch)));
+    }).on('error', reject);
+  });
+}
+
+module.exports = { TOKEN, apiCall, faylYukla, sendMessage, sendPhoto, editMessageText, answerCallbackQuery, getUpdates };

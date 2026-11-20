@@ -248,6 +248,21 @@ async function pollLoop() {
           if (!message) continue;
           const chatIdStr = String(message.chat.id);
           if (chatIdStr === CHAT_ID) {
+            // 🎤 ovozli xabar -> matn; keyin oddiy matn kabi Claude sessiyasiga/savoliga yo'naltiriladi
+            const ovoz = message.voice || message.audio || message.video_note;
+            if (ovoz && !message.text) {
+              try {
+                const buf = await tg.faylYukla(ovoz.file_id);
+                const matn = await gemini.transkript(buf, ovoz.mime_type || (message.video_note ? 'video/mp4' : 'audio/ogg'));
+                if (!matn) { await tg.sendMessage(CHAT_ID, "🎤 Ovozli xabarda gap eshitilmadi.", { reply_to_message_id: message.message_id }); continue; }
+                await tg.sendMessage(CHAT_ID, `🎤 Eshitdim: ${matn}`, { reply_to_message_id: message.message_id });
+                message.text = matn;
+              } catch (e) {
+                console.error('ovoz:', e.message);
+                await tg.sendMessage(CHAT_ID, `🎤 Ovozni matnga aylantirib bo'lmadi: ${e.message}`, { reply_to_message_id: message.message_id });
+                continue;
+              }
+            }
             if (message.text && (await claudeSessiya.handleMessage(message))) continue;
             if (message.text && (await claudeSavol.handleMessage(message))) continue;
             if (message.text && (await claudeSessiya.handleFallback(message))) continue;

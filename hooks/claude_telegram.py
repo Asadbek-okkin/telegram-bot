@@ -53,11 +53,30 @@ def idle_soniya():
         return None
 
 
-def uzoqdami():
+def uzoqdami(daqiqa=None):
     if os.path.exists(UZOQDA_FAYL):
         return True
     s = idle_soniya()
-    return s is not None and s >= IDLE_MIN * 60
+    return s is not None and s >= (IDLE_MIN if daqiqa is None else daqiqa) * 60
+
+
+# Claude javobini Telegram'ga yuborish chegarasi: kompyuter shuncha daqiqa harakatsiz bo'lsa
+BILDIR_MIN = float(os.environ.get("CLAUDE_TG_BILDIR_MIN") or 2)
+
+
+def telegramdan_belgila(sid):
+    """Sessiyaga oxirgi topshiriq Telegram'dan keldi - Claude'ning javobi ham Telegram'ga qaytsin."""
+    try:
+        open(holat_fayl(sid, "tg"), "w").close()
+    except Exception:
+        pass
+
+
+def telegramdanmi(sid):
+    try:
+        return os.path.exists(holat_fayl(sid, "tg"))
+    except Exception:
+        return False
 
 
 def qaytdimi():
@@ -386,6 +405,12 @@ def rejim_holat(inp):
         holat_yubor(inp, "tayyor")
     elif hodisa == "UserPromptSubmit":
         kutishni_toxtat(sid)
+        idle = idle_soniya()
+        if idle is not None and idle < 60 and not os.path.exists(UZOQDA_FAYL):
+            try:  # kompyuterda o'zingiz yozdingiz - javob Telegram'ga shart emas
+                os.remove(holat_fayl(sid, "tg"))
+            except Exception:
+                pass
         holat_yubor(inp, "ishlayapti")
     elif hodisa == "SessionEnd":
         kutishni_toxtat(sid)
@@ -406,6 +431,7 @@ def rejim_holat(inp):
         open(f, "w").close()
         xabarlar = holat_yubor(inp, "ishlayapti", inp.get("tool_name", ""), ol=True, timeout=4)
         if xabarlar:
+            telegramdan_belgila(sid)
             chiqar({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": telegram_matni(xabarlar)}})
 
 
@@ -414,7 +440,7 @@ def rejim_kutish(inp):
     sid = sid_of(inp)
     if not sid:
         return
-    uzoq = uzoqdami()
+    uzoq = uzoqdami(BILDIR_MIN) or telegramdanmi(sid)
     xabarlar = holat_yubor(inp, "tayyor", ol=True, bildir=uzoq, xabar=oxirgi_xabar(inp), timeout=10)
     belgi = uuid.uuid4().hex
     f = holat_fayl(sid, "kut")
@@ -446,6 +472,7 @@ def rejim_kutish(inp):
     if menikimi():
         kutishni_toxtat(sid)
     if xabarlar:
+        telegramdan_belgila(sid)
         sys.stderr.write(telegram_matni(xabarlar))
         sys.stderr.flush()
         sys.exit(2)

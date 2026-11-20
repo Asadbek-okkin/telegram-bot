@@ -115,6 +115,7 @@ function karta(s) {
 function kartaTugmalari(s) {
   const q = [[{ text: '⬅️ Ro\'yxat', callback_data: 'cs:yangila' }]];
   if (s) q.unshift([{ text: '⏹ Sessiyani yopish', callback_data: `cs:yop?:${s.sid.slice(0, 12)}` }]);
+  if (s && s.natija && s.natija.length > 2500) q.unshift([{ text: "📄 To'liq javobni o'qish", callback_data: `cs:tol:${s.sid.slice(0, 12)}` }]);
   return { inline_keyboard: q };
 }
 
@@ -265,7 +266,7 @@ function holatKeldi(b) {
   if (b.holat) s.holat = b.holat;
   s.izoh = b.izoh ? String(b.izoh).slice(0, 80) : '';
   s.oxirgi = Date.now();
-  if (b.xabar) { s.natija = String(b.xabar).slice(-3500); s.natijaVaqt = Date.now(); }
+  if (b.xabar) { s.natija = String(b.xabar).slice(-20000); s.natijaVaqt = Date.now(); }
   sessiyalar[sid] = s;
   const xabarlar = b.ol ? navbatniOl(s) : [];
   saqla();
@@ -274,18 +275,38 @@ function holatKeldi(b) {
 }
 
 // Claude ishni tugatdi, siz esa kompyuterdan uzoqdasiz: oxirgi xabarini yuboramiz; javob shu sessiyaga boradi.
+// Javob to'liq yuboriladi (uzun bo'lsa bir necha qismga bo'linib); istalgan qismiga reply - shu sessiyaga.
+function qismlarga(matn, n = 3800) {
+  const q = [];
+  let x = matn;
+  while (x.length > n) {
+    let k = x.lastIndexOf('\n', n);
+    if (k < n / 2) k = n;
+    q.push(x.slice(0, k));
+    x = x.slice(k).replace(/^\n+/, '');
+  }
+  if (x) q.push(x);
+  return q;
+}
+
 async function bildir(s, xabar) {
   let x = xabar.trim();
-  if (x.length > 3000) x = '…' + x.slice(-3000);
-  const r = await tg.sendMessage(
-    CHAT_ID,
-    `🤖 Claude ishni tugatdi — ${s.mavzu || s.loyiha}\n📁 ${s.loyiha}\n\n${x || '(matn yo‘q)'}\n\n↩️ Javob yozsangiz shu sessiyaga boradi va Claude davom etadi.`,
-  );
-  if (r && r.ok) {
-    s.bildirishId = r.result.message_id;
-    s.bildirishVaqt = Date.now();
-    saqla();
+  if (x.length > 20000) x = '…(boshi qisqartirildi)\n' + x.slice(-20000);
+  const bosh = `🤖 Claude javobi — ${s.mavzu || s.loyiha}\n📁 ${s.loyiha}\n\n`;
+  const oxiri = "\n\n↩️ Javob yozing yoki 🎤 ovozli xabar yuboring — shu sessiyaga boradi va Claude davom etadi.";
+  const qismlar = qismlarga(x || '(matn yo‘q)');
+  s.bildirishIdlar = [];
+  for (let i = 0; i < qismlar.length; i++) {
+    const tartib = qismlar.length > 1 ? `(${i + 1}/${qismlar.length}) ` : '';
+    const matn = (i === 0 ? bosh : '') + tartib + qismlar[i] + (i === qismlar.length - 1 ? oxiri : '');
+    const r = await tg.sendMessage(CHAT_ID, matn);
+    if (r && r.ok) {
+      s.bildirishId = r.result.message_id;
+      s.bildirishIdlar.push(r.result.message_id);
+    }
   }
+  s.bildirishVaqt = Date.now();
+  saqla();
 }
 
 function navbatgaQoy(s, text, ackId) {
@@ -363,6 +384,12 @@ async function handleCallback(cq) {
     const { list, matn } = vsRoyxat();
     await tg.answerCallbackQuery(cq.id);
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: vsTugmalar(list) });
+    return true;
+  }
+  if (data.startsWith('cs:tol:')) {
+    const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(data.slice(7)));
+    await tg.answerCallbackQuery(cq.id, { text: s && s.natija ? 'Yuborilmoqda' : 'Javob topilmadi' });
+    if (s && s.natija) await bildir(s, s.natija);
     return true;
   }
   // ⏹ Sessiyani yopish: tasdiq -> kuzatuvchi kompyuterda shu sessiya jarayonini to'xtatadi
@@ -461,7 +488,7 @@ async function handleMessage(message) {
   if (!text) return false;
   const replyId = message.reply_to_message && message.reply_to_message.message_id;
   if (replyId) {
-    const s = Object.values(sessiyalar).find((x) => x.bildirishId === replyId);
+    const s = Object.values(sessiyalar).find((x) => x.bildirishId === replyId || (x.bildirishIdlar || []).includes(replyId));
     if (s) { await yubor(s, text, message); return true; }
   }
   if (!yozishSid) return false;
