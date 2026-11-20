@@ -9,6 +9,7 @@ const tg = require('./telegram-api');
 const moderator = require('./moderator');
 const kompyuter = require('./kompyuter');
 const claudeSavol = require('./claude-savol');
+const claudeSessiya = require('./claude-sessiya');
 const claude = require('./claude-api');
 const gemini = require('./gemini-api');
 const bazisShifr = require('./bazis-shifr');
@@ -82,6 +83,7 @@ function mainKeyboard() {
     keyboard: [
       ['📊 Holat', "💡 G'oya yozaman"],
       ...kompyuter.KEYBOARD_ROWS,
+      ...claudeSessiya.KEYBOARD_ROWS,
       ["📋 G'oyalar ombori", '🔄 Botni yangilash'],
       ...moderator.KEYBOARD_ROWS,
     ],
@@ -121,6 +123,7 @@ async function handleAiChat(text) {
 async function handleText(text) {
   console.log(`[telegram] received: ${text}`);
   if (await kompyuter.handleText(CHAT_ID, text)) return;
+  if (await claudeSessiya.handleText(CHAT_ID, text)) return;
   if (await moderator.handleText(text)) return;
   switch (text) {
     case '📊 Holat':
@@ -173,6 +176,7 @@ async function pollLoop() {
           if (update.callback_query) {
             const cq = update.callback_query;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSavol.handleCallback(cq))) continue;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSessiya.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await kompyuter.handleCallback(cq))) continue;
             await moderator.handleCallback(cq);
             continue;
@@ -181,7 +185,9 @@ async function pollLoop() {
           if (!message) continue;
           const chatIdStr = String(message.chat.id);
           if (chatIdStr === CHAT_ID) {
+            if (message.text && (await claudeSessiya.handleMessage(message))) continue;
             if (message.text && (await claudeSavol.handleMessage(message))) continue;
+            if (message.text && (await claudeSessiya.handleFallback(message))) continue;
             if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) continue;
             if (message.photo) await moderator.handlePhoto(message);
             else if (message.text) await handleText(message.text);

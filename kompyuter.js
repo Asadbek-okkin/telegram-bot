@@ -7,6 +7,7 @@ const http = require('http');
 const crypto = require('crypto');
 const tg = require('./telegram-api');
 const claudeSavol = require('./claude-savol');
+const claudeSessiya = require('./claude-sessiya');
 
 const PC_KALIT = process.env.PC_KALIT || '';
 const DASTUR_NOMI = { yandex: 'Yandex Brauzer', telegram: 'Telegram', bazis: 'Bazis-Mebelshik', '1c': '1C' };
@@ -168,6 +169,7 @@ function kalitTogri(berilgan) {
 function serverniBoshla() {
   const srv = http.createServer((req, res) => {
     if (claudeSavol.handleHttp(req, res, kalitTogri)) return; // Claude Code savollari (claude-savol.js)
+    if (claudeSessiya.handleHttp(req, res, kalitTogri)) return; // Claude Code sessiyalari (claude-sessiya.js)
     if (req.method === 'POST' && req.url.replace(/\/+$/, '').endsWith('/uygotuvchi')) {
       if (!kalitTogri(req.headers['x-kalit'])) { res.writeHead(403); return res.end(); }
       oxirgiUygotuvchi = Date.now();

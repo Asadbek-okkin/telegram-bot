@@ -8,9 +8,13 @@ va javobni serverdan kutadi (/javob). Serverdagi qism: claude-savol.js.
 Rejimlar (birinchi argument), ~/.claude/settings.json da ulanadi:
   ruxsat - PermissionRequest: asbob ruxsati (✅ Ruxsat / ❌ Rad, matn yozsangiz - rad + izoh Claude'ga)
   savol  - PreToolUse (AskUserQuestion): variantli savollar, javob updatedInput.answers orqali
-  stop   - Stop: Claude ishni tugatib to'xtaganda oxirgi xabari Telegram'ga keladi; matn yozsangiz Claude davom etadi
+  holat  - SessionStart/UserPromptSubmit/PostToolUse/Notification/SessionEnd: sessiya holati serverga
+           ("🤖 Claude Code" tugmasi uchun). PostToolUse da Telegram'dan yozilgan xabar bo'lsa - Claude'ga beriladi.
+  kutish - Stop (async + asyncRewake): sessiya bo'sh turganda Telegram'dan xabar kutadi; kelsa exit 2 bilan
+           Claude'ni uyg'otadi. Uzoqda bo'lsangiz Claude'ning oxirgi xabarini Telegram'ga yuboradi.
+  stop   - (eski, ishlatilmaydi) Stop hookida sinxron kutish.
 
-Qachon ishlaydi: kompyuter CLAUDE_TG_IDLE_MIN daqiqa (standart 10) harakatsiz bo'lsa, yoki
+ruxsat/savol/stop qachon ishlaydi: kompyuter CLAUDE_TG_IDLE_MIN daqiqa (standart 10) harakatsiz bo'lsa, yoki
 ~/.claude/telegram-uzoqda fayli bo'lsa (darrov "uzoqdaman" rejimi). Aks holda hech narsa qilmaydi.
 Kutish paytida kompyuterda sichqoncha/klaviatura qimirlasa - Telegram savoli yopiladi va VS Code'dagi oddiy oyna chiqadi.
 XAVFSIZLIK: xato, vaqt tugashi, kalit yo'qligi - hammasida hech narsa chiqarilmaydi (oddiy so'rovga qaytadi),
@@ -30,6 +34,9 @@ UZOQDA_FAYL = os.environ.get("CLAUDE_TG_UZOQDA_FAYL") or os.path.join(os.path.ex
 IDLE_MIN = float(os.environ.get("CLAUDE_TG_IDLE_MIN") or os.environ.get("PM_TELEGRAM_IDLE_MIN") or 10)
 KUTISH_S = int(os.environ.get("CLAUDE_TG_WAIT_S", 25 * 60))  # settings.json dagi timeout'dan kam bo'lsin
 QAYTGAN_S = 20  # kompyuterda shuncha soniya ichida harakat bo'lsa - foydalanuvchi qaytgan
+HOLAT_PAPKA = os.environ.get("CLAUDE_TG_HOLAT_PAPKA") or os.path.join(os.path.expanduser("~"), ".claude", "tg-sessiya")
+YURAK_S = 10  # PostToolUse: bir xil holatni serverga shundan tez-tez yubormaymiz
+KUTISH_MAX_S = int(os.environ.get("CLAUDE_TG_KUTISH_MAX_S", 23 * 3600))  # settings.json timeout'dan kam
 
 
 def idle_soniya():
@@ -238,6 +245,143 @@ def rejim_stop(inp):
     chiqar({"decision": "block", "reason": f"Foydalanuvchi kompyuter oldida emas, Telegram orqali javob yozdi: {j['matn']}"})
 
 
+# ------------------------------------------------------------------ sessiya holati
+
+def mavzu(inp):
+    t = inp.get("session_title")
+    if t:
+        return t
+    yol = inp.get("transcript_path")
+    if not yol or not os.path.exists(yol):
+        return ""
+    try:
+        with open(yol, "rb") as f:
+            f.seek(0, 2)
+            n = f.tell()
+            f.seek(max(0, n - 400000))
+            dum = f.read().decode("utf-8", "ignore").splitlines()
+    except Exception:
+        return ""
+    oxirgi_prompt = ""
+    for q in reversed(dum):
+        if '"ai-title"' in q or '"custom-title"' in q:
+            try:
+                e = json.loads(q)
+                t = e.get("customTitle") or e.get("aiTitle")
+                if t:
+                    return t
+            except Exception:
+                pass
+        if not oxirgi_prompt and '"last-prompt"' in q:
+            try:
+                oxirgi_prompt = json.loads(q).get("lastPrompt", "")
+            except Exception:
+                pass
+    return qisqa(oxirgi_prompt, 80) if oxirgi_prompt else ""
+
+
+def sid_of(inp):
+    return "".join(ch for ch in str(inp.get("session_id", "")) if ch.isalnum() or ch == "-")[:64]
+
+
+def holat_yubor(inp, holat, izoh="", ol=False, timeout=4, **qo):
+    sid = sid_of(inp)
+    if not sid:
+        return []
+    data = {"sid": sid, "loyiha": loyiha(inp), "mavzu": mavzu(inp), "holat": holat, "izoh": izoh, "ol": ol}
+    data.update(qo)
+    if holat != "ishlayapti":  # keyingi PostToolUse "ishlayapti" ni darrov yuborsin
+        try:
+            os.remove(holat_fayl(sid, "yurak"))
+        except Exception:
+            pass
+    try:
+        return post("/holat", data, timeout=timeout).get("xabarlar") or []
+    except Exception:
+        return []
+
+
+def holat_fayl(sid, tur):
+    os.makedirs(HOLAT_PAPKA, exist_ok=True)
+    return os.path.join(HOLAT_PAPKA, f"{sid}.{tur}")
+
+
+def telegram_matni(xabarlar):
+    return "Foydalanuvchi (kompyuterdan uzoqda) Telegram orqali shu sessiyaga yozdi:\n" + "\n---\n".join(xabarlar)
+
+
+def kutishni_toxtat(sid):
+    try:
+        os.remove(holat_fayl(sid, "kut"))
+    except Exception:
+        pass
+
+
+def rejim_holat(inp):
+    hodisa = inp.get("hook_event_name", "")
+    sid = sid_of(inp)
+    if not sid:
+        return
+    if hodisa == "SessionStart":
+        holat_yubor(inp, "tayyor")
+    elif hodisa == "UserPromptSubmit":
+        kutishni_toxtat(sid)
+        holat_yubor(inp, "ishlayapti")
+    elif hodisa == "SessionEnd":
+        kutishni_toxtat(sid)
+        holat_yubor(inp, "tugadi", timeout=3)
+    elif hodisa == "Notification":
+        tur = inp.get("notification_type", "")
+        if tur in ("permission_prompt", "elicitation_dialog", "agent_needs_input"):
+            holat_yubor(inp, "kutyapti", qisqa(inp.get("message", "ruxsat so'rayapti"), 70))
+        elif tur == "idle_prompt":
+            holat_yubor(inp, "tayyor")
+    elif hodisa == "PostToolUse":
+        f = holat_fayl(sid, "yurak")
+        try:
+            if time.time() - os.path.getmtime(f) < YURAK_S:
+                return
+        except OSError:
+            pass
+        open(f, "w").close()
+        xabarlar = holat_yubor(inp, "ishlayapti", inp.get("tool_name", ""), ol=True, timeout=4)
+        if xabarlar:
+            chiqar({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": telegram_matni(xabarlar)}})
+
+
+def rejim_kutish(inp):
+    """Stop hodisasi, fonda (async + asyncRewake). Telegram'dan xabar kelsa - exit 2 bilan Claude'ni uyg'otadi."""
+    sid = sid_of(inp)
+    if not sid:
+        return
+    uzoq = uzoqdami()
+    xabarlar = holat_yubor(inp, "tayyor", ol=True, bildir=uzoq, xabar=oxirgi_xabar(inp) if uzoq else "", timeout=10)
+    belgi = uuid.uuid4().hex
+    f = holat_fayl(sid, "kut")
+    with open(f, "w") as h:
+        h.write(belgi)
+
+    def menikimi():
+        try:
+            with open(f) as h:
+                return h.read().strip() == belgi
+        except Exception:
+            return False
+
+    oxir = time.time() + KUTISH_MAX_S
+    while not xabarlar and time.time() < oxir and menikimi():
+        try:
+            xabarlar = post("/kut", {"sid": sid}, timeout=40).get("xabarlar") or []
+        except Exception:
+            time.sleep(15)
+    if menikimi():
+        kutishni_toxtat(sid)
+    if xabarlar:
+        sys.stderr.write(telegram_matni(xabarlar))
+        sys.stderr.flush()
+        sys.exit(2)
+
+
 def main():
     if os.environ.get("PM_TELEGRAM_APPROVAL_ENABLED") == "0":
         return
@@ -246,7 +390,19 @@ def main():
         inp = json.loads(sys.stdin.buffer.read().decode("utf-8") or "{}")
     except Exception:
         return
-    if not uzoqdami() or not kalit():
+    if not kalit():
+        return
+    if rejim == "holat":
+        return rejim_holat(inp)
+    if rejim == "kutish":
+        return rejim_kutish(inp)
+    if rejim in ("ruxsat", "savol"):
+        nom = inp.get("tool_name", "")
+        if rejim == "ruxsat" and nom != "AskUserQuestion":
+            holat_yubor(inp, "kutyapti", f"ruxsat: {nom}")
+        elif rejim == "savol" and nom == "AskUserQuestion":
+            holat_yubor(inp, "kutyapti", "savol berdi")
+    if not uzoqdami():
         return
     {"ruxsat": rejim_ruxsat, "savol": rejim_savol, "stop": rejim_stop}.get(rejim, lambda _i: None)(inp)
 
