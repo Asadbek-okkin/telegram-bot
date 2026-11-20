@@ -137,6 +137,7 @@ async function amalBajar(b, amal, chatId, msgId) {
   }
   if (b.joy === 'server') await new Promise((ok) => setTimeout(ok, 3000));
   const bosh = r && r.ok ? `✅ ${b.nomi}: bajarildi.` : `⚠️ ${b.nomi}: ${(r && r.xato) || 'javob kelmadi'}`;
+  if (r && r.ok) guruhga(`🛡 ${b.nomi} ${{ restart: 'qayta ishga tushirildi ♻️', start: 'yoqildi ▶', stop: "to'xtatildi ⏹" }[amal]} (admin buyrug'i bilan).`);
   await tg.editMessageText(chatId, msgId, `${bosh}\n\n${await kartaMatni(b)}`, { reply_markup: kartaTugmalari(b) });
 }
 
@@ -189,6 +190,7 @@ async function tekshir() {
     const h = await holat(b);
     if (h.ishlayapti === null) continue;
     if (oxirgiHolat[b.id] !== undefined && oxirgiHolat[b.id] !== h.ishlayapti) {
+      guruhga(h.ishlayapti ? `🟢 ${b.nomi} qayta ishlayapti.` : `🔴 ${b.nomi} to'xtab qoldi (${h.izoh}).`);
       await tg.sendMessage(CHAT_ID, h.ishlayapti
         ? `🟢 ${b.nomi} qayta ishlayapti.`
         : `🔴 ${b.nomi} TO'XTAB QOLDI (${h.izoh}).`, {
@@ -199,13 +201,67 @@ async function tekshir() {
   }
 }
 
+// ---------------------------------------------------------------- Botlar guruhi: umumiy holat taxtasi
+// Telegram'da botlar bir-birining xabarini ko'rmaydi, shuning uchun guruh - odamlar uchun taxta:
+// to'xtash/qayta ishlash, admin buyruqlari va har kuni 09:00 dagi umumiy holat shu yerga yoziladi.
+// Ulash: guruhga egasi /botlar_guruhi yozadi.
+// Guruhda /botlar - hozirgi holat.
+const fs = require('fs');
+const path = require('path');
+
+const GURUH_FAYL = path.join(__dirname, 'data', 'botlar-guruh.json');
+let guruhId = null;
+try { guruhId = JSON.parse(fs.readFileSync(GURUH_FAYL, 'utf8')).id || null; } catch {}
+
+function guruhga(matn) {
+  if (guruhId) tg.sendMessage(guruhId, matn).catch(() => {});
+}
+
+async function guruhHolati() {
+  return (await royxatMatni()).replace("\n\n👇 Botni tanlang: oxirgi ishlari va boshqarish.", '');
+}
+
+async function handleGroupMessage(message) {
+  const text = String(message.text || '').trim();
+  const egasi = String(message.from && message.from.id) === String(CHAT_ID);
+  const id = String(message.chat.id);
+  const buyruq = text.split(/[\s@]/)[0];
+  // faqat buyruq bilan: bot moderatsiya qiladigan guruhlarda egasining oddiy xabari taxtani adashtirmasin
+  if (egasi && buyruq === '/botlar_guruhi') {
+    guruhId = id;
+    fs.mkdirSync(path.dirname(GURUH_FAYL), { recursive: true });
+    fs.writeFileSync(GURUH_FAYL, JSON.stringify({ id, nomi: message.chat.title || '' }));
+    await tg.sendMessage(id, `✅ Bu guruh botlar taxtasi qilib ulandi.\nBot to'xtasa/qayta ishlasa, admin buyruqlari va har kuni 09:00 da umumiy holat shu yerga yoziladi. Holatni ko'rish: /botlar\n\n${await guruhHolati()}`);
+    await tg.sendMessage(CHAT_ID, `✅ «${message.chat.title || 'guruh'}» botlar taxtasi sifatida ulandi.`);
+    return true;
+  }
+  if (id === guruhId && buyruq === '/botlar') {
+    await tg.sendMessage(id, await guruhHolati());
+    return true;
+  }
+  return false;
+}
+
+let oxirgiErtalab = '';
+async function ertalabkiHisobot() {
+  if (!guruhId) return;
+  const t = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Tashkent', hour: '2-digit', minute: '2-digit', hour12: false });
+  const kun = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
+  if (t < '09:00' || t > '09:10' || oxirgiErtalab === kun) return;
+  oxirgiErtalab = kun;
+  await tg.sendMessage(guruhId, `☀️ Xayrli tong! Botlar holati:\n${(await guruhHolati()).replace('🛡 Botlar\n', '')}`);
+}
+
 function start(chatId, buyruqFn) {
   CHAT_ID = chatId;
   buyruqYuboruvchi = buyruqFn;
   setTimeout(() => {
     tekshir().catch(() => {});
-    setInterval(() => tekshir().catch((e) => console.error('botlar tekshir:', e.message)), 2 * 60 * 1000);
+    setInterval(() => {
+      tekshir().catch((e) => console.error('botlar tekshir:', e.message));
+      ertalabkiHisobot().catch((e) => console.error('botlar ertalab:', e.message));
+    }, 2 * 60 * 1000);
   }, 90 * 1000);
 }
 
-module.exports = { handleText, handleCallback, kompyuterdanKeldi, start };
+module.exports = { handleText, handleCallback, handleGroupMessage, kompyuterdanKeldi, start };

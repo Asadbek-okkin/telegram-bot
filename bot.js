@@ -326,6 +326,7 @@ async function pollLoop() {
               }
             }
           } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
+            if (await botlar.handleGroupMessage(message)) continue; // 🛡 botlar taxtasi guruhi
             await moderator.handleGroupMessage(message);
           }
         }
