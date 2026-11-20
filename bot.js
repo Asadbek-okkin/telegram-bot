@@ -80,8 +80,7 @@ function mainKeyboard() {
     keyboard: [
       ...kompyuter.KEYBOARD_ROWS,
       ...claudeSessiya.KEYBOARD_ROWS,
-      ['🔄 Botni yangilash'],
-      ['📊 Statistika', '👁 Guruhlar'],
+      ['📊 Statistika', '🔄 Botni yangilash'],
       [BOSHQA_TUGMA],
     ],
     resize_keyboard: true,
@@ -93,6 +92,7 @@ function boshqaKeyboard() {
     keyboard: [
       ["💡 G'oya yozaman", "📋 G'oyalar ombori"],
       ['⏰ Autoposting', "🔑 Kalit so'zlar"],
+      ['👁 Guruhlar'],
       [ORQAGA_TUGMA],
     ],
     resize_keyboard: true,
