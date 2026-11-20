@@ -136,6 +136,26 @@ function ozgarishlar(oraliq, max = 10) {
   }
 }
 
+// 🆕 Har soat GitHub tekshiriladi: yangi commit bo'lsa bir marta "Yangi versiya chiqdi — yangilang" + tugma
+let eslatilganVersiya = null;
+function yangiVersiyaKuzat() {
+  const tekshir = async () => {
+    try {
+      git('fetch --quiet');
+      const masofaviy = git('rev-parse @{u}');
+      if (masofaviy === versiya().hash || masofaviy === eslatilganVersiya) return;
+      eslatilganVersiya = masofaviy;
+      await tg.sendMessage(CHAT_ID, `🆕 Yangi versiya chiqdi — yangilang!\n\nNimalar o'zgardi:\n${ozgarishlar('HEAD..@{u}') || '•'}`, {
+        reply_markup: { inline_keyboard: [[{ text: '🔄 Yangilash', callback_data: 'yangila:hozir' }]] },
+      });
+    } catch (e) {
+      console.error('yangi versiya tekshiruvi:', (e.message || '').slice(0, 200));
+    }
+  };
+  setTimeout(tekshir, 2 * 60 * 1000);
+  setInterval(tekshir, 60 * 60 * 1000);
+}
+
 async function handleSelfUpdate() {
   const eski = versiya();
   await tg.sendMessage(CHAT_ID, `🔄 Yangilanish tekshirilmoqda…\n📦 Hozirgi versiya: ${eski.raqam}`);
@@ -285,6 +305,7 @@ async function pollLoop() {
   moderator.startAutopostLoop();
   kompyuter.startKuzatuv(CHAT_ID);
   botlar.start(CHAT_ID, claudeSessiya.kuzatuvchigaBuyruq);
+  yangiVersiyaKuzat();
   agentlar.start(CHAT_ID, botlar.guruhniOl, botlar.guruhHolati); // 🏛 kunlik majlis
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition
@@ -302,6 +323,11 @@ async function pollLoop() {
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await statistika.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await botlar.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await agentlar.handleCallback(cq))) continue;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && cq.data === 'yangila:hozir') {
+              await tg.answerCallbackQuery(cq.id, { text: 'Yangilanmoqda…' });
+              await handleSelfUpdate(); // 🆕 "Yangi versiya chiqdi" xabaridagi tugma
+              continue;
+            }
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await kompyuter.handleCallback(cq))) continue;
             await moderator.handleCallback(cq);
             continue;
