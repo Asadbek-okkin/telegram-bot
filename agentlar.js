@@ -254,6 +254,8 @@ async function buyruqAjrat(message) {
   if (/^\/majlis(@\w+)?$/i.test(t) || /^claude\s*[:,]?\s*majlis\s*[.!]?$/i.test(t)) return { tur: 'majlis' };
   const mv = t.match(/^majlis\s*:\s*([\s\S]+)/i);
   if (mv) return { tur: 'majlis_vazifa', matn: mv[1].trim() };
+  // "Salom, bugun majlis", "majlisni boshla" - qisqa xabarda "majlis" so'zi: majlis boshlanadi
+  if (t.length <= 60 && /(^|[^a-z'])majlis(ni|ga|imiz)?([^a-z']|$)/i.test(t)) return { tur: 'majlis' };
   if (/^\/(v|vazifa)(@\w+)?(\s|$)/i.test(t)) return { tur: 'vazifa', matn: t.replace(/^\/\w+(@\w+)?\s*/i, '') };
   // "Vazifa: ..." / "Claude, ..." - oddiy matn: boshqa botlar (privacy rejimida) buni ko'rmaydi
   const m = t.match(/^(vazifa|claude)\s*[:,]\s*([\s\S]+)/i);
