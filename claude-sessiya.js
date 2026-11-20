@@ -181,6 +181,36 @@ const vsKutuvchilar = new Set(); // {res, timer}
 const vsYuborilgan = new Map(); // id -> buyruq
 let oxirgiVsKut = 0;
 
+// ---------------------------------------------------------------- 🎨 AI Studio (D:\ai-studio) yoqish/o'chirish
+// Kuzatuvchi har 30 s holatni yuboradi (holat.ai: {ishlayapti, manzillar, pin}); buyruqlar shu /vs-kut kanalidan.
+let aiHolat = null;
+
+function aiMatni(bosh = '') {
+  let m = bosh ? `${bosh}\n\n` : '';
+  if (!vsUlanganmi()) return `${m}🎨 AI Studio\n\n⚠️ Kompyuterdagi kuzatuvchi ulanmagan (kompyuter o'chiq yoki Windows'ga kirilmagan).`;
+  if (!aiHolat) return `${m}🎨 AI Studio\n\nHolati hali ma'lum emas — 🔄 Yangilash.`;
+  if (!aiHolat.ishlayapti) return `${m}🎨 AI Studio — ⚪ o'chiq`;
+  m += '🎨 AI Studio — 🟢 ishlayapti';
+  const ml = aiHolat.manzillar || [];
+  if (ml.length && aiHolat.pin) {
+    m += '\n\n📱 Telefondan ochish (bosing — PIN avtomatik kiritiladi):';
+    for (const u of ml) {
+      const tailscale = /^https:\/\/100\./.test(u);
+      m += `\n${tailscale ? '🌍 Istalgan joydan (Tailscale yoqilgan telefonda)' : '🏢 Ofis Wi-Fi\'ida'}:\n${u}/kirish?pin=${aiHolat.pin}`;
+    }
+    m += `\n\nPIN: ${aiHolat.pin}\nBirinchi ochilganda «xavfsiz emas» chiqadi → «Qo'shimcha» → «Baribir o'tish».`;
+  }
+  return m;
+}
+
+function aiTugmalar() {
+  const q = [];
+  if (aiHolat && aiHolat.ishlayapti) q.push([{ text: "⏹ AI Studio'ni o'chirish", callback_data: 'cs:ai:ochir' }]);
+  else q.push([{ text: "▶ AI Studio'ni yoqish", callback_data: 'cs:ai:yoq' }]);
+  q.push([{ text: '🔄 Yangilash', callback_data: 'cs:ai' }]);
+  return { inline_keyboard: q };
+}
+
 function vsUlanganmi() {
   return vsKutuvchilar.size > 0 || Date.now() - oxirgiVsKut < 90 * 1000;
 }
@@ -230,6 +260,14 @@ async function vsNatija(n) {
   const b = vsYuborilgan.get(String(n.id || ''));
   if (!b) return;
   vsYuborilgan.delete(b.id);
+  if (String(b.amal || '').startsWith('ai-')) {
+    if (n.ai && typeof n.ai === 'object') aiHolat = n.ai;
+    const bosh = n.ok
+      ? (b.amal === 'ai-yoq' ? '✅ AI Studio yoqildi.' : b.amal === 'ai-ochir' ? "⏹ AI Studio o'chirildi." : '')
+      : `⚠️ ${String(n.xato || 'xato').slice(0, 200)}`;
+    await tg.editMessageText(b.chatId, b.msgId, aiMatni(bosh), { reply_markup: aiTugmalar(), disable_web_page_preview: true });
+    return;
+  }
   if (b.amal === 'yop') {
     const sx = sessiyalar[b.sid] || {};
     if (n.ok) { delete sessiyalar[b.sid]; saqla(); }
@@ -246,6 +284,13 @@ async function vsNatija(n) {
 }
 
 function holatKeldi(b) {
+  if (b.ai && typeof b.ai === 'object') {
+    aiHolat = {
+      ishlayapti: !!b.ai.ishlayapti,
+      manzillar: (Array.isArray(b.ai.manzillar) ? b.ai.manzillar : []).map(String).filter((u) => /^https:\/\/[\d.]+:\d+$/.test(u)).slice(0, 4),
+      pin: String(b.ai.pin || '').replace(/\D/g, '').slice(0, 8),
+    };
+  }
   if (Array.isArray(b.songgi)) {
     songgi = b.songgi
       .filter((r) => r && /^[0-9a-f-]{36}$/i.test(String(r.sid || '')))
@@ -377,6 +422,31 @@ async function handleCallback(cq) {
     const { list, matn } = royxat();
     await tg.answerCallbackQuery(cq.id);
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: tugmalar(list) });
+    return true;
+  }
+  if (data === 'cs:ai') {
+    yozishSid = null;
+    await tg.answerCallbackQuery(cq.id);
+    await tg.editMessageText(CHAT_ID, msgId, aiMatni(), { reply_markup: aiTugmalar(), disable_web_page_preview: true });
+    return true;
+  }
+  if (data === 'cs:ai:yoq' || data === 'cs:ai:ochir') {
+    if (!vsUlanganmi()) {
+      await tg.answerCallbackQuery(cq.id, { text: 'Kompyuter ulanmagan' });
+      return true;
+    }
+    const amal = data === 'cs:ai:yoq' ? 'ai-yoq' : 'ai-ochir';
+    await tg.answerCallbackQuery(cq.id, { text: 'Buyruq yuborildi' });
+    const id = require('crypto').randomBytes(6).toString('hex');
+    vsNavbat = { id, amal, sid: '', chatId: cq.message.chat.id, msgId, vaqt: Date.now() };
+    await tg.editMessageText(CHAT_ID, msgId, amal === 'ai-yoq' ? '⏳ AI Studio yoqilmoqda (1 daqiqagacha)...' : "⏳ AI Studio o'chirilmoqda...");
+    vsBuyruqBer();
+    setTimeout(() => {
+      const navbatda = vsNavbat && vsNavbat.id === id;
+      if (navbatda) vsNavbat = null;
+      if (!vsYuborilgan.delete(id) && !navbatda) return;
+      tg.editMessageText(CHAT_ID, msgId, aiMatni('⚠️ Kompyuter javob bermadi.'), { reply_markup: aiTugmalar(), disable_web_page_preview: true }).catch(() => {});
+    }, 180 * 1000);
     return true;
   }
   if (data === 'cs:vs') {

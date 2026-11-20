@@ -25,6 +25,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 import uuid
 
@@ -589,6 +590,64 @@ def sessiyani_yop(sid):
     return {"ok": True}  # ochiq sessiyalar ro'yxatida yo'q - yopilgan
 
 
+# ------------------------------------------------------------------ 🎨 AI Studio: yoqish / o'chirish
+
+AI_PAPKA = os.environ.get("AI_STUDIO_PAPKA") or r"D:\ai-studio"
+
+
+def ai_holat():
+    """AI Studio ishlayaptimi; ishlasa - telefon manzillari va PIN (/api/telefon faqat kompyuterning o'zidan ochiladi)."""
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:8777/api/telefon", timeout=3) as r:
+            d = json.loads(r.read().decode("utf-8") or "{}")
+        return {"ishlayapti": True, "manzillar": d.get("manzillar") or [], "pin": str(d.get("pin") or "")}
+    except urllib.error.HTTPError:
+        return {"ishlayapti": True, "manzillar": [], "pin": ""}
+    except Exception:
+        return {"ishlayapti": False}
+
+
+def ai_jarayonlar():
+    import subprocess
+    papka = AI_PAPKA.rstrip("\\") + "\\*"
+    # venv'dagi python.exe (ishga tushiruvchi) - taskkill /t uning bolasi (asl python) bilan birga to'xtatadi
+    buyruq = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and "
+              "$_.ExecutablePath -like '%s' } | ForEach-Object { $_.ProcessId }") % papka
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", buyruq], capture_output=True,
+                         creationflags=NO_WINDOW, timeout=30).stdout.decode("utf-8", "ignore")
+    return [int(x) for x in out.split() if x.isdigit()]
+
+
+def ai_yoq():
+    import subprocess
+    if ai_holat()["ishlayapti"]:
+        return {"ok": True, "ai": ai_holat()}
+    py = os.path.join(AI_PAPKA, ".venv", "Scripts", "python.exe")
+    if not os.path.exists(py):
+        return {"ok": False, "xato": "AI Studio topilmadi (" + AI_PAPKA + ")"}
+    jurnal = open(os.path.join(AI_PAPKA, "malumot", "server-bot.log"), "ab")
+    subprocess.Popen([py, "server.py"], cwd=AI_PAPKA, stdout=jurnal, stderr=jurnal, stdin=subprocess.DEVNULL,
+                     creationflags=NO_WINDOW | 0x00000200)  # CREATE_NEW_PROCESS_GROUP
+    for _ in range(60):
+        time.sleep(2)
+        h = ai_holat()
+        if h["ishlayapti"]:
+            time.sleep(2)  # telefon (HTTPS) qismi ham ko'tarilsin
+            return {"ok": True, "ai": ai_holat()}
+    return {"ok": False, "xato": "2 daqiqada ishga tushmadi (malumot/server-bot.log ga qarang)", "ai": ai_holat()}
+
+
+def ai_ochir():
+    import subprocess
+    for pid in ai_jarayonlar():
+        subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], capture_output=True, creationflags=NO_WINDOW)
+    for _ in range(10):
+        time.sleep(1)
+        if not ai_holat()["ishlayapti"]:
+            return {"ok": True, "ai": {"ishlayapti": False}}
+    return {"ok": False, "xato": "to'xtamadi", "ai": ai_holat()}
+
+
 def vs_tsikl():
     """POST /vs-kut long-poll: "🧩 VS Code" tugmasidan buyruq kelsa - sessiyani ochadi."""
     kutish = 5
@@ -603,8 +662,15 @@ def vs_tsikl():
         if not b:
             continue
         sid = str(b.get("sid", ""))
+        amal = b.get("amal")
         try:
-            if len(sid) != 36:
+            if amal == "ai-yoq":
+                r = ai_yoq()
+            elif amal == "ai-ochir":
+                r = ai_ochir()
+            elif amal == "ai-holat":
+                r = {"ok": True, "ai": ai_holat()}
+            elif len(sid) != 36:
                 r = {"ok": False, "xato": "noto'g'ri sessiya"}
             elif b.get("amal") == "yop":
                 r = sessiyani_yop(sid)
@@ -635,6 +701,10 @@ def rejim_kuzat():
             data["royxat"] = r
         try:
             data["songgi"] = [{k: v for k, v in x.items() if k != "cwd"} for x in songgi_sessiyalar()]
+        except Exception:
+            pass
+        try:
+            data["ai"] = ai_holat()
         except Exception:
             pass
         if data:

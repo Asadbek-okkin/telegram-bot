@@ -103,7 +103,8 @@ function holatTugmalari() {
       : { text: `▶ ${DASTUR_NOMI[d]} — yoqish`, callback_data: `pc:d:${d}:yoq` }])
     : [];
   const vsQator = [{ text: '🧩 VS Code — Claude sessiyalari', callback_data: 'cs:vs' }]; // claude-sessiya.js
-  return { inline_keyboard: [...dasturQatorlari, vsQator, qator, [{ text: '🔄 Yangilash', callback_data: 'pc:yangila' }]] };
+  const aiQator = [{ text: '🎨 AI Studio — yoqish / o\'chirish', callback_data: 'cs:ai' }]; // claude-sessiya.js
+  return { inline_keyboard: [...dasturQatorlari, vsQator, aiQator, qator, [{ text: '🔄 Yangilash', callback_data: 'pc:yangila' }]] };
 }
 
 // ---------------------------------------------------------------- agent bilan aloqa (HTTP)
