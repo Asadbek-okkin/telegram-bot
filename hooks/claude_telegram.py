@@ -451,10 +451,29 @@ def rejim_kutish(inp):
         sys.exit(2)
 
 
+def rejim_kuzat():
+    """Doimiy fon jarayoni (pythonw, Windows'ga kirganda avtomatik - HKCU Run "ClaudeTelegramKuzat").
+    Har 30 s Claude Code'ning ochiq sessiyalar ro'yxatini serverga yuboradi: yopilgan/tugagan sessiya
+    ro'yxatdan darrov tushadi, hook hali ishlamagan sessiya qo'shiladi. Bitta nusxa (mutex)."""
+    ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\ClaudeTelegramKuzat")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        return
+    while True:
+        r = jonli_sessiyalar()
+        if r is not None:
+            try:
+                post("/holat", {"royxat": r}, timeout=15)
+            except Exception:
+                pass
+        time.sleep(30)
+
+
 def main():
     if os.environ.get("PM_TELEGRAM_APPROVAL_ENABLED") == "0":
         return
     rejim = sys.argv[1] if len(sys.argv) > 1 else ""
+    if rejim == "kuzat":
+        return rejim_kuzat() if kalit() else None
     try:
         inp = json.loads(sys.stdin.buffer.read().decode("utf-8") or "{}")
     except Exception:

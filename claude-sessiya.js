@@ -59,6 +59,9 @@ function royxat() {
   const ishl = list.filter((s) => s.holat === 'ishlayapti').length;
   const kut = list.filter((s) => s.holat === 'kutyapti').length;
   let m = `🤖 Claude Code: ${list.length} ta sessiya ochiq (${ishl} ishlayapti, ${kut} javob kutyapti)\n`;
+  if (oxirgiRoyxat && Date.now() - oxirgiRoyxat > 3 * 60 * 1000) {
+    m += `⚠️ Kompyuterdan yangi ma'lumot kelmayapti (oxirgisi ${qachon(oxirgiRoyxat)}) — kompyuter o'chiq yoki internet yo'q bo'lishi mumkin.\n`;
+  }
   list.forEach((s, i) => {
     m += `\n${i + 1}. ${s.mavzu || '(mavzusiz)'}\n   📁 ${s.loyiha}\n   ${holatNomi(s)}\n   🕒 ${qachon(s.oxirgi)}`;
     if (s.navbat && s.navbat.length) m += `\n   📨 ${s.navbat.length} ta xabaringiz yetkazilishini kutyapti`;
@@ -102,7 +105,10 @@ function kutuvchigaBer(sid) {
 
 // Kompyuterdagi Claude Code'ning o'z ro'yxati (~/.claude/sessions): ochiq sessiyalarning to'liq to'plami.
 // Unda yo'q sessiya - yopilgan; bor, lekin serverda yo'q - hook hali ishlamagan sessiya (qo'shiladi).
+let oxirgiRoyxat = 0; // kompyuterdan oxirgi to'liq ro'yxat kelgan vaqt
+
 function royxatniMoslash(royxat) {
+  oxirgiRoyxat = Date.now();
   const bor = new Set();
   for (const r of royxat) {
     const sid = String(r.sid || '').slice(0, 64);
