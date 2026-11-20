@@ -85,7 +85,7 @@ function mainKeyboard() {
       [...kompyuter.KEYBOARD_ROWS[0], '🛡 Botlar'],
       ...claudeSessiya.KEYBOARD_ROWS,
       ['📊 Statistika', '🔄 Botni yangilash'],
-      ['🏛 Majlis', BOSHQA_TUGMA],
+      ['🏛 Majlis', '⌨️ Klaviatura', BOSHQA_TUGMA],
     ],
     resize_keyboard: true,
   };
@@ -224,6 +224,7 @@ async function handleText(text) {
   if (await require('./claude-limit').handleText(CHAT_ID, text)) return; // 📊 /limit - Claude limiti
   if (await agentlar.handleText(CHAT_ID, text)) return; // 🏛 Majlis, /bot_qosh, /jamoa
   if (await require('./miya').handleText(CHAT_ID, text)) return; // 🧠 /miya, /miya_ulash, /miya_gemini
+  if (await require('./klaviatura').handleText(CHAT_ID, text)) return; // ⌨️ Sof Özbek klaviatura APK
   if (await moderator.handleText(text)) return;
   switch (text) {
     case "💡 G'oya yozaman":
@@ -311,6 +312,7 @@ async function pollLoop() {
   yangiVersiyaKuzat();
   require('./claude-limit').start(CHAT_ID, botlar.guruhniOl);
   agentlar.start(CHAT_ID, botlar.guruhniOl, botlar.guruhHolati); // 🏛 kunlik majlis
+  require('./klaviatura').start(CHAT_ID); // ⌨️ klaviatura yangi versiyasini obunachilarga yuboradi
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -359,6 +361,8 @@ async function pollLoop() {
                 await tg.sendMessage(CHAT_ID, "🤷 Tushunmadim — ishlashda xato chiqdi. Qayta urinib ko'ring.", { reply_to_message_id: message.message_id });
               }
             }
+          } else if (message.chat.type === 'private') {
+            await require('./klaviatura').begona(message); // ⌨️ do'stlar /start -> klaviatura APK
           } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
             if (await botlar.handleGroupMessage(message)) continue; // 🛡 botlar taxtasi guruhi
             await moderator.handleGroupMessage(message);

@@ -5,7 +5,10 @@ Ofis kompyuterlari bitta tashqi IP dan chiqadi va GitHub API'ning kalitsiz limit
 limitsiz) almashtiradi. Format GitHub API'niki bilan bir xil. Butunlik dasturdagi imzo tekshiruvida (versiya.json). */
 const https = require('https');
 
-const REPOLAR = { 'kamera-ai': 'Asadbek-okkin/kamera-ai' };
+const REPOLAR = {
+  'kamera-ai': 'Asadbek-okkin/kamera-ai',
+  'sof-ozbek-klaviatura': 'Asadbek-okkin/sof-ozbek-klaviatura', // ⌨️ telefon klaviaturasi (klaviatura.js)
+};
 const KESH_MS = 60 * 60 * 1000;
 const kesh = {}; // repo -> {vaqt, matn}
 
@@ -45,4 +48,4 @@ function handleHttp(req, res) {
   return true;
 }
 
-module.exports = { handleHttp };
+module.exports = { handleHttp, reliz };
