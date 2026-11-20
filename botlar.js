@@ -13,7 +13,7 @@ const BOTLAR = [
   { id: 'gps', nomi: 'GPS_Nazoratbot', joy: 'server', unitlar: ['gps-nazorat'] },
   { id: 'bazis', nomi: 'BazisUstaAIBot', joy: 'server', unitlar: ['bazis-usta', 'bazis-usta-bot', 'bazisusta'] },
   { id: 'jarvis', nomi: 'JarvisAsadbekBot', joy: 'kompyuter' },
-  { id: 'pult', nomi: 'Control Pult', joy: 'noma\'lum' },
+  { id: 'pult', nomi: 'Control Pult', joy: 'kompyuter' },
   { id: 'pultcam', nomi: 'Pultcam (Kamera AI)', joy: 'kompyuter' },
 ];
 
@@ -182,6 +182,10 @@ async function handleCallback(cq) {
   }
   const b = BOTLAR.find((x) => x.id === id);
   if (!b) return true;
+  if (tur === 'y' && SERVER_YANGILA[id]) {
+    await serverYangila(id, chatId, msgId);
+    return true;
+  }
   if (tur === 'k') {
     await tg.editMessageText(chatId, msgId, await kartaMatni(b), { reply_markup: kartaTugmalari(b) });
   } else if (tur === 'a' && amal === 'stop?') {
@@ -285,6 +289,39 @@ function guruhniOl() {
   return guruhId;
 }
 
+// 🆕 Serverdagi git'siz o'rnatilgan botlar (BazisUsta, GPS) uchun "yangi versiya chiqdi": root skripti
+// /usr/local/sbin/bot-yangila (sudo, faqat shu skript) GitHub'ni tekshiradi va yangilaydi.
+const SERVER_YANGILA = { bazis: 'bazis-usta', gps: 'gps-nazorat' };
+const eslatilganYangi = {};
+
+async function yangilaSkript(id, amal) {
+  const r = await ishga('sudo', ['-n', '/usr/local/sbin/bot-yangila', SERVER_YANGILA[id], amal], 600000);
+  try { return JSON.parse(r.out.split('\n').pop()); } catch { return { ok: false, xato: (r.err || r.out).slice(-300) }; }
+}
+
+async function serverYangilanishTekshir() {
+  for (const id of Object.keys(SERVER_YANGILA)) {
+    const b = BOTLAR.find((x) => x.id === id);
+    const r = await yangilaSkript(id, 'tekshir');
+    if (!r.ok || !r.yangi || r.yangi === r.joriy || eslatilganYangi[id] === r.yangi) continue;
+    eslatilganYangi[id] = r.yangi;
+    await tg.sendMessage(CHAT_ID, `🆕 ${BELGI[id] || '🤖'} ${b.nomi} — yangi versiya chiqdi, yangilang!\n\nNimalar o'zgardi:\n${r.ozgarishlar || '•'}`, {
+      reply_markup: { inline_keyboard: [[{ text: `🔄 ${b.nomi}ni yangilash`, callback_data: `bt:y:${id}` }]] },
+    });
+  }
+}
+
+async function serverYangila(id, chatId, msgId) {
+  const b = BOTLAR.find((x) => x.id === id);
+  await tg.editMessageText(chatId, msgId, `⏳ ${b.nomi} yangilanmoqda… (1 daqiqagacha)`);
+  const r = await yangilaSkript(id, 'yangila');
+  const ok = r.ok && r.holat === 'active';
+  if (ok) guruhga(`🆕 ${b.nomi} yangi versiyaga yangilandi ✅`);
+  await tg.editMessageText(chatId, msgId, ok
+    ? `✅ ${b.nomi} yangilandi va ishlayapti (${String(r.joriy || '').slice(0, 7)}).`
+    : `⚠️ ${b.nomi}: ${r.xato || `xizmat holati: ${r.holat || "noma'lum"}`}`);
+}
+
 // 🖼 Guruh rasmi: deploy/avtobotlar-guruh.jpg o'zgarsa (yoki hali qo'yilmagan bo'lsa) - guruhga o'rnatiladi.
 // setChatPhoto faylni multipart bilan talab qiladi (file_id/url emas). Bot adminda "guruh ma'lumotini o'zgartirish" ruxsati kerak.
 const GURUH_RASM = path.join(__dirname, 'deploy', 'avtobotlar-guruh.jpg');
@@ -342,10 +379,12 @@ function start(chatId, buyruqFn) {
   buyruqYuboruvchi = buyruqFn;
   setTimeout(() => {
     tekshir().catch(() => {});
+    serverYangilanishTekshir().catch((e) => console.error('server yangilanish:', e.message));
     guruhRasminiQoy().catch((e) => console.error('guruh rasmi:', e.message));
     setInterval(() => {
       tekshir().catch((e) => console.error('botlar tekshir:', e.message));
       ertalabkiHisobot().catch((e) => console.error('botlar ertalab:', e.message));
+      if (Date.now() % (10 * 60 * 1000) < 2 * 60 * 1000) serverYangilanishTekshir().catch((e) => console.error('server yangilanish:', e.message));
     }, 2 * 60 * 1000);
   }, 90 * 1000);
 }

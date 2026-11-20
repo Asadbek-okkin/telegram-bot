@@ -813,17 +813,27 @@ KOMPYUTER_BOTLAR = {
         "yoqish": [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "KameraAI", "KameraAI.exe"), "--oynasiz", "--fon"],
         "tiklash": True,
     },
+    "pult": {  # Control Pult (BoshqaruvPulti): boti pult.py ichida ishlaydi; oynasiz (--oynasiz) yoqiladi
+        "papka": r"D:\BoshqaruvPulti\dastur",
+        "cmd": r"*BoshqaruvPulti\dastur\pult.py*",  # tizim Python'i bilan ishlaydi - buyruq qatori bo'yicha topiladi
+        "belgi": "pult.py",
+        "log": os.path.join(r"D:\BoshqaruvPulti\dastur", "zakaz_avto_" + os.environ.get("COMPUTERNAME", "") + ".log"),
+        "yoqish": [os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), r"D:\BoshqaruvPulti\dastur\pult.py", "--oynasiz"],
+        "tiklash": True,
+    },
 }
 _toxtatilgan = set()  # bot orqali ataylab to'xtatilganlar - o'zi qayta yoqilmaydi
 _jim_sanoq = {}  # nom -> ketma-ket "ishlamayapti" tekshiruvlari
 
 
-def papka_jarayonlari(papka, exe="python*"):
-    """[(pid, buyruq_qatori)] - exe shu papka ichida bo'lgan jarayonlar (standart: python)."""
+def papka_jarayonlari(papka, exe="python*", cmd=None):
+    """[(pid, buyruq_qatori)] - exe shu papka ichida bo'lgan jarayonlar (standart: python);
+    cmd berilsa - buyruq qatori shu naqshga mos python jarayonlari."""
     import subprocess
     naqsh = papka.rstrip("\\") + "\\*"
-    buyruq = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like '%s' -and $_.ExecutablePath -like '%s' } | "
-              "ForEach-Object { '' + $_.ProcessId + '|' + $_.CommandLine }") % (exe, naqsh)
+    shart = ("$_.CommandLine -like '%s'" % cmd) if cmd else ("$_.ExecutablePath -like '%s'" % naqsh)
+    buyruq = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like '%s' -and %s } | "
+              "ForEach-Object { '' + $_.ProcessId + '|' + $_.CommandLine }") % (exe, shart)
     out = subprocess.run(["powershell", "-NoProfile", "-Command", buyruq], capture_output=True,
                          creationflags=NO_WINDOW, timeout=30).stdout.decode("utf-8", "ignore")
     natija = []
@@ -846,7 +856,7 @@ def log_dumi(yol, n=15):
 
 
 def _ishlayaptimi(c):
-    return any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"], c.get("exe", "python*")))
+    return any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"], c.get("exe", "python*"), c.get("cmd")))
 
 
 def kompyuter_botlar_holati():
@@ -879,7 +889,7 @@ def kompyuter_bot_amal(nom, qil):
     else:
         _toxtatilgan.discard(nom)
     if qil in ("stop", "restart"):
-        for pid, _cmd in papka_jarayonlari(c["papka"], exe):
+        for pid, _cmd in papka_jarayonlari(c["papka"], exe, c.get("cmd")):
             subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], capture_output=True, creationflags=NO_WINDOW)
         time.sleep(2)
     if qil in ("start", "restart"):
@@ -891,7 +901,7 @@ def kompyuter_bot_amal(nom, qil):
             if _ishlayaptimi(c):
                 return {"ok": True}
         return {"ok": False, "xato": "40 soniyada ishga tushmadi"}
-    ok = not papka_jarayonlari(c["papka"], exe)
+    ok = not papka_jarayonlari(c["papka"], exe, c.get("cmd"))
     return {"ok": ok, "xato": "" if ok else "to'xtamadi"}
 
 
