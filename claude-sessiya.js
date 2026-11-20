@@ -256,7 +256,22 @@ function vsBuyruqBer() {
   const b = vsNavbat;
   vsNavbat = null;
   vsYuborilgan.set(b.id, b);
-  json(k.res, 200, { buyruq: { id: b.id, sid: b.sid, amal: b.amal || 'och' } });
+  json(k.res, 200, { buyruq: { id: b.id, sid: b.sid, amal: b.amal || 'och', nom: b.nom, qil: b.qil } });
+}
+
+// Boshqa modullar uchun (botlar.js): kuzatuvchiga buyruq va natijani kutish -> {ok, xato, ...}
+function kuzatuvchigaBuyruq(buyruq, muddatMs = 90000) {
+  return new Promise((resolve) => {
+    if (!vsUlanganmi()) { resolve({ ok: false, xato: "kompyuter bilan aloqa yo'q" }); return; }
+    const id = require('crypto').randomBytes(6).toString('hex');
+    const timer = setTimeout(() => {
+      if (vsNavbat && vsNavbat.id === id) vsNavbat = null;
+      vsYuborilgan.delete(id);
+      resolve({ ok: false, xato: 'kompyuter javob bermadi' });
+    }, muddatMs);
+    vsNavbat = { ...buyruq, id, sid: '', vaqt: Date.now(), resolve: (n) => { clearTimeout(timer); resolve(n); } };
+    vsBuyruqBer();
+  });
 }
 
 function vsKut(res) {
@@ -272,6 +287,7 @@ async function vsNatija(n) {
   const b = vsYuborilgan.get(String(n.id || ''));
   if (!b) return;
   vsYuborilgan.delete(b.id);
+  if (b.resolve) { b.resolve(n); return; }
   if (n.ok) {
     if (b.amal === 'ai-yoq' || b.amal === 'ai-ochir') statistika.qayd('ai_studio');
     else if (b.amal === 'yop') statistika.qayd('claude_yopish');
@@ -301,6 +317,7 @@ async function vsNatija(n) {
 }
 
 function holatKeldi(b) {
+  if (b.botlar) require('./botlar').kompyuterdanKeldi(b.botlar); // 🛡 Botlar: kompyuterdagi botlar holati
   if (b.ai && typeof b.ai === 'object') {
     aiHolat = {
       ishlayapti: !!b.ai.ishlayapti,
@@ -673,4 +690,4 @@ async function rasmCallback(cq, data, msgId) {
   return true;
 }
 
-module.exports = { KEYBOARD_ROWS, handleHttp, handleText, handleCallback, handleMessage, handleFallback, handlePhoto };
+module.exports = { KEYBOARD_ROWS, handleHttp, handleText, handleCallback, handleMessage, handleFallback, handlePhoto, kuzatuvchigaBuyruq };

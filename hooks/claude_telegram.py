@@ -795,6 +795,75 @@ def telegram_qulf_tsikl():
             pass
 
 
+# ------------------------------------------------------------------ 🛡 Botlar: shu kompyuterdagi botlar
+# Server (botlar.js) holatni har 30 s oladi va ▶/⏹/♻️ buyruqlarini /vs-kut orqali yuboradi.
+KOMPYUTER_BOTLAR = {
+    "jarvis": {
+        "papka": r"D:\jarvis",  # shu papkadagi .venv python jarayonlari - bot (fon.py nazoratchisi + bot.py)
+        "belgi": "bot.py",  # ishlayapti = buyruq qatorida shu bor jarayon bor
+        "log": r"D:\jarvis\malumot\jarvis.log",
+        "yoqish": ["wscript.exe", r"D:\jarvis\jarvis_fonda.vbs"],
+    },
+}
+
+
+def papka_jarayonlari(papka):
+    """[(pid, buyruq_qatori)] - exe shu papka ichida bo'lgan python jarayonlari."""
+    import subprocess
+    naqsh = papka.rstrip("\\") + "\\*"
+    buyruq = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.ExecutablePath -like '%s' } | "
+              "ForEach-Object { '' + $_.ProcessId + '|' + $_.CommandLine }") % naqsh
+    out = subprocess.run(["powershell", "-NoProfile", "-Command", buyruq], capture_output=True,
+                         creationflags=NO_WINDOW, timeout=30).stdout.decode("utf-8", "ignore")
+    natija = []
+    for q in out.splitlines():
+        pid, _, cmd = q.partition("|")
+        if pid.strip().isdigit():
+            natija.append((int(pid), cmd))
+    return natija
+
+
+def log_dumi(yol, n=15):
+    try:
+        with open(yol, "rb") as f:
+            f.seek(0, 2)
+            f.seek(max(0, f.tell() - 8000))
+            qator = f.read().decode("utf-8", "replace").splitlines()
+        return "\n".join(qator[-n:])
+    except OSError:
+        return ""
+
+
+def kompyuter_botlar_holati():
+    natija = {}
+    for nom, c in KOMPYUTER_BOTLAR.items():
+        j = papka_jarayonlari(c["papka"])
+        natija[nom] = {"ishlayapti": any(c["belgi"] in cmd for _p, cmd in j), "log": log_dumi(c["log"])}
+    return natija
+
+
+def kompyuter_bot_amal(nom, qil):
+    import subprocess
+    c = KOMPYUTER_BOTLAR.get(nom)
+    if not c or qil not in ("start", "stop", "restart"):
+        return {"ok": False, "xato": "noma'lum bot yoki buyruq"}
+    if qil in ("stop", "restart"):
+        for pid, _cmd in papka_jarayonlari(c["papka"]):
+            subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], capture_output=True, creationflags=NO_WINDOW)
+        time.sleep(2)
+    if qil in ("start", "restart"):
+        if any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"])):
+            return {"ok": True}
+        subprocess.Popen(c["yoqish"], cwd=c["papka"], creationflags=NO_WINDOW)
+        for _ in range(20):
+            time.sleep(2)
+            if any(c["belgi"] in cmd for _p, cmd in papka_jarayonlari(c["papka"])):
+                return {"ok": True}
+        return {"ok": False, "xato": "40 soniyada ishga tushmadi"}
+    ok = not papka_jarayonlari(c["papka"])
+    return {"ok": ok, "xato": "" if ok else "to'xtamadi"}
+
+
 def vs_tsikl():
     """POST /vs-kut long-poll: "🧩 VS Code" tugmasidan buyruq kelsa - sessiyani ochadi."""
     kutish = 5
@@ -817,6 +886,8 @@ def vs_tsikl():
                 r = ai_ochir()
             elif amal == "ai-holat":
                 r = {"ok": True, "ai": ai_holat()}
+            elif amal == "bot":
+                r = kompyuter_bot_amal(str(b.get("nom", "")), str(b.get("qil", "")))
             elif len(sid) != 36:
                 r = {"ok": False, "xato": "noto'g'ri sessiya"}
             elif b.get("amal") == "yop":
@@ -853,6 +924,10 @@ def rejim_kuzat():
             pass
         try:
             data["ai"] = ai_holat()
+        except Exception:
+            pass
+        try:
+            data["botlar"] = kompyuter_botlar_holati()
         except Exception:
             pass
         if data:
