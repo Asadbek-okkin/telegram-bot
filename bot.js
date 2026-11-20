@@ -79,14 +79,29 @@ function ideasArchiveReport() {
   return `G'oyalar ombori${skippedTxt} (✓ = Claude Code ko'rib chiqgan):\n` + lines.join('\n');
 }
 
+// G'oyalar va kanal tugmalari bitta "🗂" tugmasi ichida (asosiy klaviatura ixcham bo'lsin)
+const BOSHQA_TUGMA = "🗂 G'oyalar va kanal";
+const ORQAGA_TUGMA = '⬅️ Orqaga';
+
 function mainKeyboard() {
   return {
     keyboard: [
-      ['📊 Holat', "💡 G'oya yozaman"],
       ...kompyuter.KEYBOARD_ROWS,
       ...claudeSessiya.KEYBOARD_ROWS,
-      ["📋 G'oyalar ombori", '🔄 Botni yangilash'],
-      ...moderator.KEYBOARD_ROWS,
+      ['📊 Holat', '🔄 Botni yangilash'],
+      ['📊 Statistika', '👁 Guruhlar'],
+      [BOSHQA_TUGMA],
+    ],
+    resize_keyboard: true,
+  };
+}
+
+function boshqaKeyboard() {
+  return {
+    keyboard: [
+      ["💡 G'oya yozaman", "📋 G'oyalar ombori"],
+      ['⏰ Autoposting', "🔑 Kalit so'zlar"],
+      [ORQAGA_TUGMA],
     ],
     resize_keyboard: true,
   };
@@ -198,6 +213,12 @@ async function handleText(text) {
       return;
     case "📋 G'oyalar ombori":
       await tg.sendMessage(CHAT_ID, ideasArchiveReport());
+      return;
+    case BOSHQA_TUGMA:
+      await tg.sendMessage(CHAT_ID, "🗂 G'oyalar va kanal", { reply_markup: boshqaKeyboard() });
+      return;
+    case ORQAGA_TUGMA:
+      await tg.sendMessage(CHAT_ID, 'Asosiy menyu', { reply_markup: mainKeyboard() });
       return;
     case '🔄 Botni yangilash':
       // bot ishga tushishidan oldin bosilgan (qayta yuborilgan) tugma - yangilash allaqachon bo'ldi,

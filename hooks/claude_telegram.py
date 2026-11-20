@@ -63,6 +63,8 @@ def uzoqdami(daqiqa=None):
 
 # Claude javobini Telegram'ga yuborish chegarasi: kompyuter shuncha daqiqa harakatsiz bo'lsa
 BILDIR_MIN = float(os.environ.get("CLAUDE_TG_BILDIR_MIN") or 2)
+# Javob kelgach shuncha soniya kompyuterga tegilmasa - javob Telegram'ga yuboriladi
+JAVOB_KUT_S = int(os.environ.get("CLAUDE_TG_JAVOB_KUT_S") or 60)
 
 
 def telegramdan_belgila(sid):
@@ -482,6 +484,19 @@ def rejim_kutish(inp):
                 return h.read().strip() == belgi
         except Exception:
             return False
+
+    # Kompyuter yonida bo'lsangiz ham: javobdan keyin JAVOB_KUT_S soniya sichqoncha/klaviaturaga tegilmasa -
+    # demak kompyuter yonida emassiz, javob Telegram'ga yuboriladi. Tegilsa - yuborilmaydi.
+    if not uzoq and not xabarlar:
+        boshi = time.time()
+        while menikimi() and time.time() - boshi < JAVOB_KUT_S:
+            time.sleep(2)
+            idle = idle_soniya()
+            if idle is not None and idle < time.time() - boshi - 1:
+                break  # javobdan keyin kompyuterga tegildi - siz shu yerdasiz
+        else:
+            if menikimi():
+                xabarlar = holat_yubor(inp, "tayyor", ol=True, bildir=True, xabar=oxirgi_xabar(inp), timeout=10)
 
     oxir = time.time() + KUTISH_MAX_S
     oxirgi_royxat = time.time()
