@@ -97,12 +97,23 @@ function tugmalar(list) {
   return { inline_keyboard: q };
 }
 
+// Claude javobi markdown'da: Telegram oddiy matnda ** va ` belgilar xom ko'rinmasin
+function mdTozala(t) {
+  return String(t)
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_m, a, b) => (/^https?:/.test(b) ? `${a} (${b})` : a))
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^- /gm, '• ');
+}
+
 // Bitta sessiya kartasi: holat + oxirgi natija; karta ochiq turganda yozilgan matn shu sessiyaga ketadi.
 function karta(s) {
   const raqam = tartibli().findIndex((x) => x.sid === s.sid) + 1;
   let m = `${belgi(s)} ${raqam}. ${nomi(s)}\n📁 ${s.loyiha} · ${holatQisqa(s)}`;
   if (s.natija) {
-    const n = s.natija.length > 2500 ? '…' + s.natija.slice(-2500) : s.natija;
+    const nt = mdTozala(s.natija);
+    const n = nt.length > 2500 ? '…' + nt.slice(-2500) : nt;
     m += `\n\n📄 Oxirgi natija (${qachon(s.natijaVaqt || s.oxirgi)}):\n${n}`;
   } else {
     m += '\n\n📄 Hali natija yo\'q.';
@@ -339,7 +350,7 @@ async function bildir(s, xabar) {
   if (x.length > 20000) x = '…(boshi qisqartirildi)\n' + x.slice(-20000);
   const bosh = `🤖 Claude javobi — ${s.mavzu || s.loyiha}\n📁 ${s.loyiha}\n\n`;
   const oxiri = "\n\n↩️ Javob yozing yoki 🎤 ovozli xabar yuboring — shu sessiyaga boradi va Claude davom etadi.";
-  const qismlar = qismlarga(x || '(matn yo‘q)');
+  const qismlar = qismlarga(mdTozala(x) || '(matn yo‘q)');
   s.bildirishIdlar = [];
   for (let i = 0; i < qismlar.length; i++) {
     const tartib = qismlar.length > 1 ? `(${i + 1}/${qismlar.length}) ` : '';
@@ -612,7 +623,7 @@ async function rasmniSessiyaga(s, message) {
   const id = require('crypto').randomBytes(8).toString('hex');
   fs.writeFileSync(path.join(RASM_PAPKA, `${id}.jpg`), await tg.faylYukla(rasmFaylId(message)));
   const izoh = (message.caption || '').trim();
-  await yubor(s, `${izoh || "(izohsiz rasm — rasmga qarab nima kerakligini tushunib oling)"}\n[[rasm:${id}]]`, message);
+  await yubor(s, `${izoh || "(izohsiz rasm - rasmga qarab nima kerakligini tushunib oling)"}\n[[rasm:${id}]]`, message);
 }
 
 // true - rasm Claude'ga ketdi yoki qayerga yuborishni so'radik; false - Claude sessiyasi yo'q (kanal postiga)

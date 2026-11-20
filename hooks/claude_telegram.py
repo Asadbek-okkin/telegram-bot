@@ -502,7 +502,8 @@ def rejim_kutish(inp):
         kutishni_toxtat(sid)
     if xabarlar:
         telegramdan_belgila(sid)
-        sys.stderr.write(telegram_matni(xabarlar))
+        # UTF-8 baytlar: Windows konsol kodlashi o'zbek/rus harflarini ō yoki � ga buzardi
+        sys.stderr.buffer.write(telegram_matni(xabarlar).encode("utf-8"))
         sys.stderr.flush()
         sys.exit(2)
 
