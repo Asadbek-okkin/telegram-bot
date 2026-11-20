@@ -153,7 +153,7 @@ function yangiVersiyaKuzat() {
     }
   };
   setTimeout(tekshir, 2 * 60 * 1000);
-  setInterval(tekshir, 60 * 60 * 1000);
+  setInterval(tekshir, 10 * 60 * 1000); // har 10 daqiqa (git fetch - GitHub API limitiga kirmaydi)
 }
 
 async function handleSelfUpdate() {
