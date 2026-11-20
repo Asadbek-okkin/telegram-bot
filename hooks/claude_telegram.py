@@ -533,6 +533,35 @@ def vscode_och(sid):
     return {"ok": True}
 
 
+def sessiyani_yop(sid):
+    """⏹ Sessiyani yopish: ~/.claude/sessions/<pid>.json dan shu sessiya jarayonini topib to'xtatadi.
+    Suhbat (transkript) saqlanib qoladi - keyin "🧩 VS Code" orqali qayta ochish mumkin."""
+    import subprocess
+    papka = os.path.join(CLAUDE_PAPKA, "sessions")
+    try:
+        fayllar = [x for x in os.listdir(papka) if x.endswith(".json")]
+    except Exception:
+        fayllar = []
+    for x in fayllar:
+        try:
+            with open(os.path.join(papka, x), encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if d.get("sessionId") != sid:
+            continue
+        pid = int(d.get("pid") or 0)
+        if not pid or not jarayon_tirikmi(pid):
+            return {"ok": True}  # allaqachon yopilgan
+        r = subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], capture_output=True, creationflags=NO_WINDOW)
+        time.sleep(1)
+        if jarayon_tirikmi(pid):
+            return {"ok": False, "xato": f"jarayon to'xtamadi (kod {r.returncode})"}
+        kutishni_toxtat(sid)
+        return {"ok": True}
+    return {"ok": True}  # ochiq sessiyalar ro'yxatida yo'q - yopilgan
+
+
 def vs_tsikl():
     """POST /vs-kut long-poll: "🧩 VS Code" tugmasidan buyruq kelsa - sessiyani ochadi."""
     kutish = 5
@@ -548,7 +577,12 @@ def vs_tsikl():
             continue
         sid = str(b.get("sid", ""))
         try:
-            r = vscode_och(sid) if len(sid) == 36 else {"ok": False, "xato": "noto'g'ri sessiya"}
+            if len(sid) != 36:
+                r = {"ok": False, "xato": "noto'g'ri sessiya"}
+            elif b.get("amal") == "yop":
+                r = sessiyani_yop(sid)
+            else:
+                r = vscode_och(sid)
         except Exception as e:
             r = {"ok": False, "xato": str(e)}
         try:

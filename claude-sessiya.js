@@ -112,8 +112,10 @@ function karta(s) {
   return m;
 }
 
-function kartaTugmalari() {
-  return { inline_keyboard: [[{ text: '⬅️ Ro\'yxat', callback_data: 'cs:yangila' }]] };
+function kartaTugmalari(s) {
+  const q = [[{ text: '⬅️ Ro\'yxat', callback_data: 'cs:yangila' }]];
+  if (s) q.unshift([{ text: '⏹ Sessiyani yopish', callback_data: `cs:yop?:${s.sid.slice(0, 12)}` }]);
+  return { inline_keyboard: q };
 }
 
 function json(res, kod, obj) {
@@ -211,7 +213,7 @@ function vsBuyruqBer() {
   const b = vsNavbat;
   vsNavbat = null;
   vsYuborilgan.set(b.id, b);
-  json(k.res, 200, { buyruq: { id: b.id, sid: b.sid } });
+  json(k.res, 200, { buyruq: { id: b.id, sid: b.sid, amal: b.amal || 'och' } });
 }
 
 function vsKut(res) {
@@ -227,6 +229,13 @@ async function vsNatija(n) {
   const b = vsYuborilgan.get(String(n.id || ''));
   if (!b) return;
   vsYuborilgan.delete(b.id);
+  if (b.amal === 'yop') {
+    const sx = sessiyalar[b.sid] || {};
+    if (n.ok) { delete sessiyalar[b.sid]; saqla(); }
+    const r = royxat();
+    await tg.editMessageText(b.chatId, b.msgId, `${n.ok ? `⏹ Sessiya yopildi: ${nomi(sx)}` : `⚠️ Yopib bo'lmadi: ${String(n.xato || 'xato').slice(0, 200)}`}\n\n${r.matn}`, { reply_markup: tugmalar(r.list) });
+    return;
+  }
   const s = songgi.find((x) => x.sid === b.sid) || {};
   const bosh = n.ok
     ? `✅ VS Code'da ochildi: ${s.mavzu || 'sessiya'} (📁 ${s.loyiha || ''})`
@@ -356,6 +365,42 @@ async function handleCallback(cq) {
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: vsTugmalar(list) });
     return true;
   }
+  // ⏹ Sessiyani yopish: tasdiq -> kuzatuvchi kompyuterda shu sessiya jarayonini to'xtatadi
+  if (data.startsWith('cs:yop?:') || data.startsWith('cs:yop!:')) {
+    const tasdiq = data.startsWith('cs:yop!:');
+    const bosh = data.slice(8);
+    const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));
+    yozishSid = null;
+    if (!s) {
+      await tg.answerCallbackQuery(cq.id, { text: 'Sessiya allaqachon yopilgan' });
+      const r = royxat();
+      await tg.editMessageText(CHAT_ID, msgId, r.matn, { reply_markup: tugmalar(r.list) });
+      return true;
+    }
+    if (!tasdiq) {
+      await tg.answerCallbackQuery(cq.id);
+      await tg.editMessageText(CHAT_ID, msgId, `⏹ «${nomi(s)}» sessiyasi yopilsinmi?\nClaude hozir ishlayotgan bo'lsa, ish to'xtaydi. Suhbat saqlanib qoladi — keyin 🧩 VS Code orqali qayta ochish mumkin.`, {
+        reply_markup: { inline_keyboard: [[{ text: '⏹ Ha, yopish', callback_data: `cs:yop!:${bosh}` }, { text: "Yo'q", callback_data: `cs:och:${bosh}` }]] },
+      });
+      return true;
+    }
+    if (!vsUlanganmi()) {
+      await tg.answerCallbackQuery(cq.id, { text: 'Kompyuter ulanmagan' });
+      return true;
+    }
+    await tg.answerCallbackQuery(cq.id, { text: 'Buyruq yuborildi' });
+    const id = require('crypto').randomBytes(6).toString('hex');
+    vsNavbat = { id, amal: 'yop', sid: s.sid, chatId: cq.message.chat.id, msgId, vaqt: Date.now() };
+    await tg.editMessageText(CHAT_ID, msgId, `⏳ Yopilmoqda: ${nomi(s)}...`);
+    vsBuyruqBer();
+    setTimeout(() => {
+      const navbatda = vsNavbat && vsNavbat.id === id;
+      if (navbatda) vsNavbat = null;
+      if (!vsYuborilgan.delete(id) && !navbatda) return;
+      tg.editMessageText(CHAT_ID, msgId, "⚠️ Kompyuter javob bermadi.", { reply_markup: kartaTugmalari(s) }).catch(() => {});
+    }, 90 * 1000);
+    return true;
+  }
   if (data.startsWith('cs:vso:')) {
     const bosh = data.slice(7);
     const s = songgi.find((x) => x.sid.startsWith(bosh));
@@ -393,7 +438,7 @@ async function handleCallback(cq) {
     yozishSid = s.sid;
     s.bildirishId = msgId; // kartaga reply qilinsa ham shu sessiyaga
     saqla();
-    await tg.editMessageText(CHAT_ID, msgId, karta(s), { reply_markup: kartaTugmalari() });
+    await tg.editMessageText(CHAT_ID, msgId, karta(s), { reply_markup: kartaTugmalari(s) });
     return true;
   }
   await tg.answerCallbackQuery(cq.id);
