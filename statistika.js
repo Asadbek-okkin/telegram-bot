@@ -74,7 +74,8 @@ function kunlarRoyxati(n) {
 
 function ustun(qiymat, eng, uzunlik = 12) {
   if (!qiymat) return '';
-  return '█'.repeat(Math.max(1, Math.round((qiymat / eng) * uzunlik)));
+  return '▒'.repeat( // kulrang, shaffof ko'rinadigan blok (█ qop-qora chiqardi)
+Math.max(1, Math.round((qiymat / eng) * uzunlik)));
 }
 
 function hisobot(n) {
