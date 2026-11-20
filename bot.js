@@ -1,5 +1,5 @@
 /* Mustaqil, doimiy ishlaydigan Telegram bot: pack-master yoki boshqa biror loyihaga bog'liq
-emas. Tugma bosilganda DARROV javob beradi (long-polling, getUpdates). Holat/g'oyalar
+emas. Tugma bosilganda DARROV javob beradi (long-polling, getUpdates). G'oyalar
 arxivi shu faylda; mebel-kanal boshqaruvi (post, autoposting, kalit so'z, guruh) - moderator.js. */
 const fs = require('fs');
 const path = require('path');
@@ -48,14 +48,6 @@ function setOffset(n) {
   }
 }
 
-function statusReport() {
-  const uptimeSec = os.uptime();
-  const h = Math.floor(uptimeSec / 3600);
-  const m = Math.floor((uptimeSec % 3600) / 60);
-  const v = versiya();
-  return `Kompyuter: ${os.hostname()}\nBot versiyasi: ${v.raqam} (${v.sana})\nIshlab turgan vaqt: ${h} soat ${m} daqiqa\nHozirgi vaqt: ${new Date().toLocaleString('uz-UZ')}`;
-}
-
 function appendIdea(text) {
   let list = [];
   try { list = JSON.parse(fs.readFileSync(IDEAS_FILE, 'utf8')); } catch {}
@@ -88,7 +80,7 @@ function mainKeyboard() {
     keyboard: [
       ...kompyuter.KEYBOARD_ROWS,
       ...claudeSessiya.KEYBOARD_ROWS,
-      ['📊 Holat', '🔄 Botni yangilash'],
+      ['🔄 Botni yangilash'],
       ['📊 Statistika', '👁 Guruhlar'],
       [BOSHQA_TUGMA],
     ],
@@ -204,9 +196,6 @@ async function handleText(text) {
   if (await claudeSessiya.handleText(CHAT_ID, text)) return;
   if (await moderator.handleText(text)) return;
   switch (text) {
-    case '📊 Holat':
-      await tg.sendMessage(CHAT_ID, `[Holat]\n${statusReport()}`);
-      return;
     case "💡 G'oya yozaman":
       awaitingIdea = true;
       await tg.sendMessage(CHAT_ID, "Mayli, g'oyangizni yozing - keyingi xabaringiz saqlanadi.");
