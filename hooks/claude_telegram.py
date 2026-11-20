@@ -980,7 +980,8 @@ def rejim_kuzat():
             data["botlar"] = kompyuter_botlar_holati()
         except Exception:
             pass
-        lim = limit_oqi()  # 📊 Claude limitlari (statusLine yozgan)
+        limit_yangila()  # har 10 daqiqada hooks/claude_limit.py (siz ruxsat bergan skript) limit.json ni yangilaydi
+        lim = limit_oqi()  # 📊 Claude limitlari
         if lim:
             data["claude_limit"] = lim
         if data:
@@ -1025,6 +1026,25 @@ def rejim_statusline():
             qism.append(f"5 soat {yoz['five_hour']['foiz']:.0f}%")
     model = (d.get("model") or {}).get("display_name") or ""
     sys.stdout.buffer.write(" · ".join([x for x in [model] + qism if x]).encode("utf-8"))
+
+
+_limit_oxirgi = 0
+
+
+def limit_yangila():
+    """hooks/claude_limit.py ni alohida jarayonda ishga tushiradi (10 daqiqada bir marta)."""
+    global _limit_oxirgi
+    if time.time() - _limit_oxirgi < 600:
+        return
+    _limit_oxirgi = time.time()
+    try:
+        import subprocess
+        py = os.path.join(os.path.dirname(sys.executable), "python.exe")
+        subprocess.run([py if os.path.exists(py) else sys.executable,
+                        os.path.join(os.path.dirname(os.path.abspath(__file__)), "claude_limit.py")],
+                       capture_output=True, timeout=60, creationflags=0x08000000)
+    except Exception:
+        pass
 
 
 def limit_oqi():
