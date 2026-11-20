@@ -168,7 +168,80 @@ function royxatniMoslash(royxat) {
   for (const sid of Object.keys(sessiyalar)) if (!bor.has(sid)) delete sessiyalar[sid];
 }
 
+// ---------------------------------------------------------------- 🧩 VS Code: kerakli sessiyani kompyuterda ochish
+// Kuzatuvchi (hooks/claude_telegram.py kuzat, foydalanuvchi sessiyasida) har 30 s so'nggi sessiyalarni yuboradi
+// (holat.songgi) va POST /vs-kut ni long-poll qiladi. Tugma bosilsa - unga {id, sid} beriladi; kuzatuvchi
+// VS Code'da shu sessiya papkasini ochadi va sessiyani davom ettiradi, keyin POST /vs-natija {id, ok, xato}.
+let songgi = []; // [{sid, loyiha, mavzu, vaqt}] - yangisi birinchi
+let vsNavbat = null; // {id, sid, chatId, msgId, vaqt}
+const vsKutuvchilar = new Set(); // {res, timer}
+const vsYuborilgan = new Map(); // id -> buyruq
+let oxirgiVsKut = 0;
+
+function vsUlanganmi() {
+  return vsKutuvchilar.size > 0 || Date.now() - oxirgiVsKut < 90 * 1000;
+}
+
+function vsRoyxat() {
+  const ochiq = new Set(Object.keys(sessiyalar));
+  const list = songgi.slice(0, 12);
+  if (!vsUlanganmi()) {
+    return { list: [], matn: "🧩 VS Code\n\n⚠️ Kompyuterdagi kuzatuvchi ulanmagan (kompyuter o'chiq yoki Windows'ga kirilmagan).\nkuzatuvchini-ornatish.bat ishga tushirilganini tekshiring." };
+  }
+  if (!list.length) return { list, matn: "🧩 VS Code\n\nClaude Code sessiyalari topilmadi." };
+  let m = '🧩 VS Code — Claude Code sessiyalari\n';
+  list.forEach((s, i) => {
+    m += `\n${ochiq.has(s.sid) ? '🟢' : '⚪'} ${i + 1}. ${s.mavzu || 'Nomsiz sessiya'}\n      📁 ${s.loyiha} · ${qachon(s.vaqt)}`;
+  });
+  m += "\n\n🟢 — hozir ochiq.\n👇 Sessiyani tanlang — kompyuterda VS Code shu loyihada ochiladi va sessiya davom ettiriladi.";
+  return { list, matn: m };
+}
+
+function vsTugmalar(list) {
+  const q = list.map((s, i) => [{ text: `${i + 1}. ${qisqart(s.mavzu || 'Nomsiz sessiya', 30)} · ${qisqart(s.loyiha, 14)}`, callback_data: `cs:vso:${s.sid.slice(0, 12)}` }]);
+  q.push([{ text: '🔄 Yangilash', callback_data: 'cs:vs' }]);
+  return { inline_keyboard: q };
+}
+
+function vsBuyruqBer() {
+  if (!vsNavbat || !vsKutuvchilar.size) return;
+  const k = [...vsKutuvchilar][0];
+  vsKutuvchilar.delete(k);
+  clearTimeout(k.timer);
+  const b = vsNavbat;
+  vsNavbat = null;
+  vsYuborilgan.set(b.id, b);
+  json(k.res, 200, { buyruq: { id: b.id, sid: b.sid } });
+}
+
+function vsKut(res) {
+  oxirgiVsKut = Date.now();
+  const k = { res, timer: null };
+  k.timer = setTimeout(() => { vsKutuvchilar.delete(k); oxirgiVsKut = Date.now(); json(res, 200, { buyruq: null }); }, USHLASH_MS);
+  vsKutuvchilar.add(k);
+  res.on('close', () => { if (!res.writableEnded) { clearTimeout(k.timer); vsKutuvchilar.delete(k); } });
+  vsBuyruqBer();
+}
+
+async function vsNatija(n) {
+  const b = vsYuborilgan.get(String(n.id || ''));
+  if (!b) return;
+  vsYuborilgan.delete(b.id);
+  const s = songgi.find((x) => x.sid === b.sid) || {};
+  const bosh = n.ok
+    ? `✅ VS Code'da ochildi: ${s.mavzu || 'sessiya'} (📁 ${s.loyiha || ''})`
+    : `⚠️ Ochib bo'lmadi: ${String(n.xato || 'xato').slice(0, 200)}`;
+  const { list, matn } = vsRoyxat();
+  await tg.editMessageText(b.chatId, b.msgId, `${bosh}\n\n${matn}`, { reply_markup: vsTugmalar(list) });
+}
+
 function holatKeldi(b) {
+  if (Array.isArray(b.songgi)) {
+    songgi = b.songgi
+      .filter((r) => r && /^[0-9a-f-]{36}$/i.test(String(r.sid || '')))
+      .slice(0, 20)
+      .map((r) => ({ sid: String(r.sid), loyiha: String(r.loyiha || 'loyiha').slice(0, 80), mavzu: String(r.mavzu || '').slice(0, 120), vaqt: Number(r.vaqt) || Date.now() }));
+  }
   if (Array.isArray(b.royxat)) royxatniMoslash(b.royxat);
   const sid = String(b.sid || '').slice(0, 64);
   if (!sid) { saqla(); return { xabarlar: [] }; }
@@ -237,12 +310,17 @@ function bodyOqi(req) {
 function handleHttp(req, res, kalitTogri) {
   if (req.method !== 'POST') return false;
   const yol = req.url.split('?')[0].replace(/\/+$/, '');
-  const amal = ['/holat', '/kut'].find((a) => yol.endsWith(a));
+  const amal = ['/holat', '/vs-kut', '/vs-natija', '/kut'].find((a) => yol.endsWith(a));
   if (!amal) return false;
   if (!kalitTogri(req.headers['x-kalit'])) { res.writeHead(403); res.end(); return true; }
   bodyOqi(req).then((b) => {
     try {
       if (amal === '/holat') return json(res, 200, holatKeldi(b));
+      if (amal === '/vs-kut') return vsKut(res);
+      if (amal === '/vs-natija') {
+        vsNatija(b).catch((e) => console.error('claude-sessiya vs-natija:', e.message));
+        return json(res, 200, { ok: true });
+      }
       return kut(b, res);
     } catch (e) {
       console.error('claude-sessiya:', e.message);
@@ -269,6 +347,37 @@ async function handleCallback(cq) {
     const { list, matn } = royxat();
     await tg.answerCallbackQuery(cq.id);
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: tugmalar(list) });
+    return true;
+  }
+  if (data === 'cs:vs') {
+    yozishSid = null;
+    const { list, matn } = vsRoyxat();
+    await tg.answerCallbackQuery(cq.id);
+    await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: vsTugmalar(list) });
+    return true;
+  }
+  if (data.startsWith('cs:vso:')) {
+    const bosh = data.slice(7);
+    const s = songgi.find((x) => x.sid.startsWith(bosh));
+    if (!s || !vsUlanganmi()) {
+      await tg.answerCallbackQuery(cq.id, { text: s ? 'Kompyuter ulanmagan' : 'Sessiya topilmadi' });
+      const { list, matn } = vsRoyxat();
+      await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: vsTugmalar(list) });
+      return true;
+    }
+    await tg.answerCallbackQuery(cq.id, { text: 'Buyruq yuborildi' });
+    vsNavbat = { id: require('crypto').randomBytes(6).toString('hex'), sid: s.sid, chatId: cq.message.chat.id, msgId, vaqt: Date.now() };
+    const id = vsNavbat.id;
+    await tg.editMessageText(CHAT_ID, msgId, `⏳ VS Code ochilmoqda: ${s.mavzu || 'sessiya'} (📁 ${s.loyiha})...`);
+    vsBuyruqBer();
+    setTimeout(() => {
+      const kutilgan = (vsNavbat && vsNavbat.id === id) || vsYuborilgan.has(id);
+      if (!kutilgan) return;
+      if (vsNavbat && vsNavbat.id === id) vsNavbat = null;
+      vsYuborilgan.delete(id);
+      const r = vsRoyxat();
+      tg.editMessageText(CHAT_ID, msgId, `⚠️ Kompyuter javob bermadi.\n\n${r.matn}`, { reply_markup: vsTugmalar(r.list) }).catch(() => {});
+    }, 90 * 1000);
     return true;
   }
   // cs:och: yangi; cs:yoz:/cs:nat: - eski xabarlardagi tugmalar ham karta ochadi

@@ -451,18 +451,134 @@ def rejim_kutish(inp):
         sys.exit(2)
 
 
+# ------------------------------------------------------------------ 🧩 VS Code: sessiyani Telegram'dan ochish
+
+NO_WINDOW = 0x08000000
+_songgi_kesh = {}  # yo'l -> (mtime, {sid, cwd, loyiha, mavzu, vaqt})
+
+
+def transkript_cwd(yol):
+    """Transkriptdagi birinchi "cwd" va entrypoint (VS Code/CLI sessiyasimi)."""
+    try:
+        with open(yol, encoding="utf-8", errors="ignore") as f:
+            for i, q in enumerate(f):
+                if i > 200:
+                    break
+                if '"cwd"' not in q:
+                    continue
+                try:
+                    e = json.loads(q)
+                except Exception:
+                    continue
+                if e.get("cwd"):
+                    return e["cwd"], str(e.get("entrypoint") or "")
+    except Exception:
+        pass
+    return "", ""
+
+
+def songgi_sessiyalar(n=12):
+    """~/.claude/projects/*/<sid>.jsonl - eng so'nggi interaktiv sessiyalar (yopilganlari ham), yangisi birinchi."""
+    import glob
+    fayllar = []
+    for yol in glob.glob(os.path.join(CLAUDE_PAPKA, "projects", "*", "*.jsonl")):
+        try:
+            fayllar.append((os.path.getmtime(yol), yol))
+        except OSError:
+            pass
+    fayllar.sort(reverse=True)
+    natija = []
+    for mt, yol in fayllar:
+        if len(natija) >= n:
+            break
+        k = _songgi_kesh.get(yol)
+        if not k or k[0] != mt:
+            sid = os.path.basename(yol)[:-6]
+            cwd, kirish = transkript_cwd(yol)
+            ok = bool(cwd) and os.path.isdir(cwd) and (not kirish or "vscode" in kirish or kirish == "cli")
+            k = (mt, {"sid": sid, "cwd": cwd, "loyiha": os.path.basename(cwd.rstrip("/\\")) or cwd,
+                      "mavzu": transkript_mavzusi(yol), "vaqt": int(mt * 1000)} if ok else None)
+            _songgi_kesh[yol] = k
+        if k[1]:
+            natija.append(k[1])
+    return natija
+
+
+def code_cmd():
+    for y in (os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Microsoft VS Code", "bin", "code.cmd"),
+              r"C:\Program Files\Microsoft VS Code\bin\code.cmd"):
+        if os.path.exists(y):
+            return y
+    return "code"
+
+
+def vscode_ishlayaptimi():
+    import subprocess
+    out = subprocess.run(["tasklist", "/fi", "imagename eq Code.exe", "/nh"], capture_output=True,
+                         creationflags=NO_WINDOW).stdout.decode("oem", errors="replace")
+    return "code.exe" in out.lower()
+
+
+def vscode_och(sid):
+    """Sessiya papkasini VS Code'da ochadi (oyna oldinga chiqadi), keyin Claude Code'da shu sessiyani davom ettiradi.
+    Papka serverdan olinmaydi - faqat shu kompyuterdagi o'z ro'yxatimizdan (sid bo'yicha)."""
+    import subprocess
+    s = next((x for x in songgi_sessiyalar(30) if x["sid"] == sid), None)
+    if not s:
+        return {"ok": False, "xato": "sessiya kompyuterda topilmadi"}
+    edi = vscode_ishlayaptimi()
+    subprocess.Popen(["cmd", "/c", code_cmd(), s["cwd"]], creationflags=NO_WINDOW)
+    time.sleep(4 if edi else 12)  # yangi oyna/kengaytma yuklanguncha
+    os.startfile("vscode://anthropic.claude-code/open?session=" + sid)
+    return {"ok": True}
+
+
+def vs_tsikl():
+    """POST /vs-kut long-poll: "🧩 VS Code" tugmasidan buyruq kelsa - sessiyani ochadi."""
+    kutish = 5
+    while True:
+        try:
+            b = post("/vs-kut", {}, timeout=45).get("buyruq")
+            kutish = 5
+        except Exception:
+            time.sleep(kutish)
+            kutish = min(kutish * 2, 60)
+            continue
+        if not b:
+            continue
+        sid = str(b.get("sid", ""))
+        try:
+            r = vscode_och(sid) if len(sid) == 36 else {"ok": False, "xato": "noto'g'ri sessiya"}
+        except Exception as e:
+            r = {"ok": False, "xato": str(e)}
+        try:
+            post("/vs-natija", {"id": b.get("id"), **r}, timeout=15)
+        except Exception:
+            pass
+
+
 def rejim_kuzat():
     """Doimiy fon jarayoni (pythonw, Windows'ga kirganda avtomatik - HKCU Run "ClaudeTelegramKuzat").
-    Har 30 s Claude Code'ning ochiq sessiyalar ro'yxatini serverga yuboradi: yopilgan/tugagan sessiya
-    ro'yxatdan darrov tushadi, hook hali ishlamagan sessiya qo'shiladi. Bitta nusxa (mutex)."""
+    Har 30 s Claude Code'ning ochiq sessiyalar ro'yxatini (va so'nggi sessiyalarni - "🧩 VS Code" uchun)
+    serverga yuboradi: yopilgan/tugagan sessiya ro'yxatdan darrov tushadi, hook hali ishlamagan sessiya
+    qo'shiladi. Alohida oqimda VS Code'da sessiya ochish buyruqlarini kutadi. Bitta nusxa (mutex)."""
+    import threading
     ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\ClaudeTelegramKuzat")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
         return
+    threading.Thread(target=vs_tsikl, daemon=True).start()
     while True:
+        data = {}
         r = jonli_sessiyalar()
         if r is not None:
+            data["royxat"] = r
+        try:
+            data["songgi"] = [{k: v for k, v in x.items() if k != "cwd"} for x in songgi_sessiyalar()]
+        except Exception:
+            pass
+        if data:
             try:
-                post("/holat", {"royxat": r}, timeout=15)
+                post("/holat", data, timeout=15)
             except Exception:
                 pass
         time.sleep(30)
