@@ -27,7 +27,32 @@ function yoz(d) {
 async function oxirgi() {
   const r = JSON.parse(await reliz(REPO));
   const a = (r.assets || []).find((x) => /\.apk$/i.test(x.name || ''));
-  return { tag: r.tag_name, nom: r.name, izoh: r.body || '', url: a && a.browser_download_url, fayl: (a && a.name) || 'SofOzbekKlaviatura.apk' };
+  const videolar = (r.assets || []).filter((x) => /\.mp4$/i.test(x.name || '')).map((x) => ({ nom: x.name, url: x.browser_download_url }))
+    .sort((x, y) => x.nom.localeCompare(y.nom));
+  return { tag: r.tag_name, nom: r.name, izoh: r.body || '', url: a && a.browser_download_url, fayl: (a && a.name) || 'SofOzbekKlaviatura.apk', videolar };
+}
+
+/** O'quv videolari (relizdagi .mp4 fayllar): "1-ornatish.mp4" -> "1. Ornatish" */
+async function videoYubor(chatId, r) {
+  r = r || (await oxirgi());
+  for (const v of r.videolar || []) {
+    const caption = '📹 ' + v.nom.replace(/\.mp4$/i, '').replace(/^(\d+)-/, '$1. ').replace(/-/g, ' ');
+    const d = oqi();
+    d.videoIds = d.videoIds || {};
+    const kalit = `${r.tag}/${v.nom}`;
+    if (d.videoIds[kalit]) {
+      const res = await tg.apiCall('sendVideo', { chat_id: chatId, video: d.videoIds[kalit], caption, supports_streaming: true });
+      if (res && res.ok) continue;
+    }
+    const buf = await yuklab(v.url);
+    const res = await hujjatYubor(chatId, buf, v.nom, caption, 'sendVideo', 'video', 'video/mp4');
+    if (res && res.ok && res.result && res.result.video) {
+      const d2 = oqi();
+      d2.videoIds = d2.videoIds || {};
+      d2.videoIds[kalit] = res.result.video.file_id;
+      yoz(d2);
+    }
+  }
 }
 
 function yuklab(url, qadam = 0) {
@@ -46,18 +71,18 @@ function yuklab(url, qadam = 0) {
   });
 }
 
-function hujjatYubor(chatId, buf, faylNomi, caption) {
+function hujjatYubor(chatId, buf, faylNomi, caption, usul = 'sendDocument', maydon = 'document', tur = 'application/vnd.android.package-archive') {
   return new Promise((resolve, reject) => {
     const ch = '----klaviatura' + Date.now();
     const qism = (nom, qiymat) => `--${ch}\r\nContent-Disposition: form-data; name="${nom}"\r\n\r\n${qiymat}\r\n`;
     const bosh = Buffer.from(
-      qism('chat_id', chatId) + qism('caption', caption) +
-      `--${ch}\r\nContent-Disposition: form-data; name="document"; filename="${faylNomi}"\r\n` +
-      'Content-Type: application/vnd.android.package-archive\r\n\r\n', 'utf8');
+      qism('chat_id', chatId) + qism('caption', caption) + (usul === 'sendVideo' ? qism('supports_streaming', 'true') : '') +
+      `--${ch}\r\nContent-Disposition: form-data; name="${maydon}"; filename="${faylNomi}"\r\n` +
+      `Content-Type: ${tur}\r\n\r\n`, 'utf8');
     const oxir = Buffer.from(`\r\n--${ch}--\r\n`, 'utf8');
     const tana = Buffer.concat([bosh, buf, oxir]);
     const req = https.request({
-      hostname: 'api.telegram.org', path: `/bot${tg.TOKEN}/sendDocument`, method: 'POST',
+      hostname: 'api.telegram.org', path: `/bot${tg.TOKEN}/${usul}`, method: 'POST',
       headers: { 'Content-Type': `multipart/form-data; boundary=${ch}`, 'Content-Length': tana.length },
     }, (res) => {
       const b = [];
@@ -99,6 +124,10 @@ async function yubor(chatId, r, sarlavha) {
 
 /** Admin chat: «⌨️ Klaviatura» yoki /klaviatura */
 async function handleText(chatId, text) {
+  if (/^\/klaviatura_video\b/.test(text || '')) {
+    try { await videoYubor(chatId); } catch (e) { await tg.sendMessage(chatId, `📹 Videolarni yuborib bo'lmadi: ${e.message}`); }
+    return true;
+  }
   if (text !== TUGMA && !/^\/klaviatura\b/.test(text || '')) return false;
   try {
     await tg.sendMessage(chatId, '⏳ APK tayyorlanmoqda...');
@@ -119,6 +148,7 @@ async function begona(message) {
   if (!d.obunachilar.includes(id)) { d.obunachilar.push(id); yoz(d); }
   try {
     await yubor(id);
+    await videoYubor(id).catch((e) => console.error('klaviatura video:', e.message)); // qisqa o'quv videolari
   } catch (e) {
     console.error('klaviatura begona:', e.message);
     await tg.sendMessage(id, "Kechirasiz, hozir APK'ni yuborib bo'lmadi. Birozdan keyin /klaviatura deb yozing.");
@@ -135,9 +165,15 @@ async function tekshir() {
   const d = oqi();
   if (d.tag === r.tag) return;
   // birinchi marta (hali hech narsa yuborilmagan) - faqat adminga; keyin - hammaga
-  const kimlar = d.tag ? [ADMIN, ...(d.obunachilar || [])] : [ADMIN];
+  const birinchi = !d.tag;
+  const kimlar = birinchi ? [ADMIN] : [ADMIN, ...(d.obunachilar || [])];
   d.tag = r.tag;
   yoz(d);
+  if (birinchi && ADMIN) {
+    // birinchi ishga tushish: admin APK va o'quv videolarini oladi
+    try { await yubor(ADMIN, r, '⌨️ Klaviatura tayyor'); await videoYubor(ADMIN, r); } catch (e) { console.error('klaviatura birinchi', e.message); }
+    return;
+  }
   for (const id of [...new Set(kimlar.filter(Boolean))]) {
     try { await yubor(id, r, '🆕 Yangi versiya chiqdi!'); } catch (e) { console.error('klaviatura yangi versiya', id, e.message); }
     await new Promise((res) => setTimeout(res, 300));
