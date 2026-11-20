@@ -8,6 +8,7 @@ const { execSync } = require('child_process');
 const tg = require('./telegram-api');
 const moderator = require('./moderator');
 const kompyuter = require('./kompyuter');
+const claudeSavol = require('./claude-savol');
 const claude = require('./claude-api');
 const gemini = require('./gemini-api');
 const bazisShifr = require('./bazis-shifr');
@@ -171,6 +172,7 @@ async function pollLoop() {
           offset = Math.max(offset, update.update_id + 1);
           if (update.callback_query) {
             const cq = update.callback_query;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSavol.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await kompyuter.handleCallback(cq))) continue;
             await moderator.handleCallback(cq);
             continue;
@@ -179,6 +181,7 @@ async function pollLoop() {
           if (!message) continue;
           const chatIdStr = String(message.chat.id);
           if (chatIdStr === CHAT_ID) {
+            if (message.text && (await claudeSavol.handleMessage(message))) continue;
             if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) continue;
             if (message.photo) await moderator.handlePhoto(message);
             else if (message.text) await handleText(message.text);
