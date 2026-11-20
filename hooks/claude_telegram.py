@@ -302,7 +302,7 @@ def jonli_sessiyalar():
         natija.append({
             "sid": sid,
             "loyiha": os.path.basename(str(d.get("cwd", "")).rstrip("/\\")) or "loyiha",
-            "mavzu": transkript_mavzusi(tr) or d.get("name", ""),
+            "mavzu": transkript_mavzusi(tr) or (d.get("name", "") if d.get("nameSource") != "derived" else ""),
             "holat": "ishlayapti" if st == "busy" else "tayyor" if st == "idle" else "kutyapti",
         })
     return natija

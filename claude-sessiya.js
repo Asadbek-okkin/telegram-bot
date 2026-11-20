@@ -42,41 +42,78 @@ function qachon(ms) {
   return `${Math.floor(s / 3600)} soat ${Math.floor((s % 3600) / 60)} daq. oldin`;
 }
 
-function holatNomi(s) {
+function nomi(s) {
+  return s.mavzu || 'Yangi sessiya';
+}
+
+function belgi(s) {
+  if (s.holat === 'ishlayapti') return Date.now() - s.oxirgi > JIM_MS ? '🟠' : '🟢';
+  if (s.holat === 'kutyapti') return '🟡';
+  return '⚪';
+}
+
+function holatQisqa(s) {
   if (s.holat === 'ishlayapti') {
-    if (Date.now() - s.oxirgi > JIM_MS) return `🟠 ishlayapti(?) — ${qachon(s.oxirgi)} dan beri xabar yo'q`;
-    return `🟢 ishlayapti${s.izoh ? ` (${s.izoh})` : ''}`;
+    if (Date.now() - s.oxirgi > JIM_MS) return `ishlayapti(?) — ${qachon(s.oxirgi)} dan beri xabar yo'q`;
+    return 'ishlayapti';
   }
-  if (s.holat === 'kutyapti') return `🟡 JAVOBINGIZNI KUTYAPTI${s.izoh ? ` — ${s.izoh}` : ''}`;
-  if (s.holat === 'tayyor') return '⚪ ishni tugatdi — yangi topshiriq kutyapti';
-  return s.holat || "noma'lum";
+  if (s.holat === 'kutyapti') return `JAVOBINGIZNI KUTYAPTI${s.izoh ? ` (${s.izoh})` : ''}`;
+  return "bo'sh — topshiriq kutyapti";
+}
+
+function tartibli() {
+  tozala();
+  return Object.values(sessiyalar).sort((a, b) => (a.boshlangan || 0) - (b.boshlangan || 0));
+}
+
+function ogohlantirish() {
+  if (oxirgiRoyxat && Date.now() - oxirgiRoyxat > 3 * 60 * 1000) {
+    return `⚠️ Kompyuterdan ma'lumot kelmayapti (oxirgisi ${qachon(oxirgiRoyxat)}) — kompyuter o'chiq bo'lishi mumkin.\n\n`;
+  }
+  return '';
 }
 
 function royxat() {
-  tozala();
-  const list = Object.values(sessiyalar).sort((a, b) => b.oxirgi - a.oxirgi);
-  if (!list.length) return { list, matn: "🤖 Claude Code: ochiq sessiya yo'q (yoki kompyuter o'chiq)." };
-  const ishl = list.filter((s) => s.holat === 'ishlayapti').length;
-  const kut = list.filter((s) => s.holat === 'kutyapti').length;
-  let m = `🤖 Claude Code: ${list.length} ta sessiya ochiq (${ishl} ishlayapti, ${kut} javob kutyapti)\n`;
-  if (oxirgiRoyxat && Date.now() - oxirgiRoyxat > 3 * 60 * 1000) {
-    m += `⚠️ Kompyuterdan yangi ma'lumot kelmayapti (oxirgisi ${qachon(oxirgiRoyxat)}) — kompyuter o'chiq yoki internet yo'q bo'lishi mumkin.\n`;
-  }
+  const list = tartibli();
+  if (!list.length) return { list, matn: `${ogohlantirish()}🤖 Claude Code: ochiq sessiya yo'q.` };
+  const loyihalar = new Set(list.map((s) => s.loyiha));
+  let m = `${ogohlantirish()}🤖 Claude Code — ${list.length} ta sessiya\n`;
   list.forEach((s, i) => {
-    m += `\n${i + 1}. ${s.mavzu || '(mavzusiz)'}\n   📁 ${s.loyiha}\n   ${holatNomi(s)}\n   🕒 ${qachon(s.oxirgi)}`;
-    if (s.navbat && s.navbat.length) m += `\n   📨 ${s.navbat.length} ta xabaringiz yetkazilishini kutyapti`;
+    m += `\n${belgi(s)} ${i + 1}. ${nomi(s)}`;
+    if (loyihalar.size > 1) m += `  📁 ${s.loyiha}`;
+    m += `\n      ${holatQisqa(s)}`;
   });
+  m += '\n\n👇 Sessiyani tanlang — natijasini ko\'rasiz va unga yozasiz.';
   return { list, matn: m };
 }
 
+function qisqart(t, n) {
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+}
+
 function tugmalar(list) {
-  const q = list.slice(0, 10).map((s, i) => {
-    const qator = [{ text: `✉️ ${i + 1}-ga yozish`, callback_data: `cs:yoz:${s.sid.slice(0, 12)}` }];
-    if (s.natija) qator.push({ text: `📄 ${i + 1}-natija`, callback_data: `cs:nat:${s.sid.slice(0, 12)}` });
-    return qator;
-  });
+  const q = list.slice(0, 10).map((s, i) => [{ text: `${belgi(s)} ${i + 1}. ${qisqart(nomi(s), 34)}`, callback_data: `cs:och:${s.sid.slice(0, 12)}` }]);
   q.push([{ text: '🔄 Yangilash', callback_data: 'cs:yangila' }]);
   return { inline_keyboard: q };
+}
+
+// Bitta sessiya kartasi: holat + oxirgi natija; karta ochiq turganda yozilgan matn shu sessiyaga ketadi.
+function karta(s) {
+  const raqam = tartibli().findIndex((x) => x.sid === s.sid) + 1;
+  let m = `${belgi(s)} ${raqam}. ${nomi(s)}\n📁 ${s.loyiha} · ${holatQisqa(s)}`;
+  if (s.natija) {
+    const n = s.natija.length > 2500 ? '…' + s.natija.slice(-2500) : s.natija;
+    m += `\n\n📄 Oxirgi natija (${qachon(s.natijaVaqt || s.oxirgi)}):\n${n}`;
+  } else {
+    m += '\n\n📄 Hali natija yo\'q.';
+  }
+  if (s.navbat && s.navbat.length) m += `\n\n📨 ${s.navbat.length} ta xabaringiz yetkazilishini kutyapti.`;
+  m += '\n\n✍️ Shu yerga yozing — xabaringiz shu sessiyaga boradi.';
+  return m;
+}
+
+function kartaTugmalari() {
+  return { inline_keyboard: [[{ text: '⬅️ Ro\'yxat', callback_data: 'cs:yangila' }]] };
 }
 
 function json(res, kod, obj) {
@@ -228,38 +265,26 @@ async function handleCallback(cq) {
   if (!data.startsWith('cs:')) return false;
   const msgId = cq.message.message_id;
   if (data === 'cs:yangila') {
+    yozishSid = null;
     const { list, matn } = royxat();
     await tg.answerCallbackQuery(cq.id);
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: tugmalar(list) });
     return true;
   }
-  if (data === 'cs:bekor') {
-    yozishSid = null;
-    await tg.answerCallbackQuery(cq.id, { text: 'Bekor qilindi' });
-    await tg.editMessageText(CHAT_ID, msgId, '✖ Xabar yozish bekor qilindi.');
-    return true;
-  }
-  if (data.startsWith('cs:nat:')) {
+  // cs:och: yangi; cs:yoz:/cs:nat: - eski xabarlardagi tugmalar ham karta ochadi
+  if (data.startsWith('cs:och:') || data.startsWith('cs:yoz:') || data.startsWith('cs:nat:')) {
     const bosh = data.slice(7);
     const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));
     await tg.answerCallbackQuery(cq.id);
-    if (!s || !s.natija) { await tg.sendMessage(CHAT_ID, "Bu sessiyada hali natija yo'q."); return true; }
-    const r = await tg.sendMessage(
-      CHAT_ID,
-      `📄 Oxirgi natija — ${s.mavzu || s.loyiha} (${qachon(s.natijaVaqt || s.oxirgi)}):\n\n${s.natija}\n\n↩️ Javob yozsangiz shu sessiyaga boradi.`,
-    );
-    if (r && r.ok) { s.bildirishId = r.result.message_id; saqla(); }
-    return true;
-  }
-  if (data.startsWith('cs:yoz:')) {
-    const bosh = data.slice(7);
-    const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));
-    await tg.answerCallbackQuery(cq.id);
-    if (!s) { await tg.sendMessage(CHAT_ID, 'Bu sessiya endi yopilgan.'); return true; }
+    if (!s) {
+      const { list, matn } = royxat();
+      await tg.editMessageText(CHAT_ID, msgId, `Bu sessiya yopilgan.\n\n${matn}`, { reply_markup: tugmalar(list) });
+      return true;
+    }
     yozishSid = s.sid;
-    await tg.sendMessage(CHAT_ID, `✉️ "${s.mavzu || s.loyiha}" sessiyasiga xabaringizni yozing:`, {
-      reply_markup: { inline_keyboard: [[{ text: '✖ Bekor qilish', callback_data: 'cs:bekor' }]] },
-    });
+    s.bildirishId = msgId; // kartaga reply qilinsa ham shu sessiyaga
+    saqla();
+    await tg.editMessageText(CHAT_ID, msgId, karta(s), { reply_markup: kartaTugmalari() });
     return true;
   }
   await tg.answerCallbackQuery(cq.id);
@@ -272,7 +297,7 @@ async function yubor(s, text, message) {
     : s.holat === 'kutyapti'
       ? "Claude hozir boshqa savolingizga javob kutyapti — avval o'sha savolga javob bering; xabar keyin yetkaziladi."
       : 'Claude bo\'sh turgan edi — hozir uyg\'otiladi.';
-  const r = await tg.sendMessage(CHAT_ID, `📨 Yuborildi (${s.mavzu || s.loyiha}).\n${qachonOladi}`, { reply_to_message_id: message.message_id });
+  const r = await tg.sendMessage(CHAT_ID, `📨 Yuborildi → ${nomi(s)}\n${qachonOladi}`, { reply_to_message_id: message.message_id });
   navbatgaQoy(s, text, r && r.ok ? r.result.message_id : null);
 }
 
@@ -288,8 +313,8 @@ async function handleMessage(message) {
   if (!yozishSid) return false;
   if (text.startsWith('/') || /^\p{Extended_Pictographic}/u.test(text)) { yozishSid = null; return false; }
   const s = sessiyalar[yozishSid];
-  yozishSid = null;
-  if (!s) { await tg.sendMessage(CHAT_ID, 'Bu sessiya endi yopilgan, xabar yuborilmadi.'); return true; }
+  // karta ochiq qoladi: ketma-ket bir nechta xabar yozish mumkin; boshqa tugma bosilsa yopiladi
+  if (!s) { yozishSid = null; await tg.sendMessage(CHAT_ID, 'Bu sessiya endi yopilgan, xabar yuborilmadi.'); return true; }
   await yubor(s, text, message);
   return true;
 }
