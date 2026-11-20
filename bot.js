@@ -15,6 +15,7 @@ const gemini = require('./gemini-api');
 const bazisShifr = require('./bazis-shifr');
 const statistika = require('./statistika');
 const botlar = require('./botlar');
+const agentlar = require('./agentlar');
 
 const CHAT_ID = '313364362';
 const OFFSET_FILE = path.join(os.homedir(), '.claude', 'pm-telegram-offset.txt');
@@ -84,7 +85,7 @@ function mainKeyboard() {
       [...kompyuter.KEYBOARD_ROWS[0], '🛡 Botlar'],
       ...claudeSessiya.KEYBOARD_ROWS,
       ['📊 Statistika', '🔄 Botni yangilash'],
-      [BOSHQA_TUGMA],
+      ['🏛 Majlis', BOSHQA_TUGMA],
     ],
     resize_keyboard: true,
   };
@@ -199,6 +200,7 @@ async function handleText(text) {
   if (await claudeSessiya.handleText(CHAT_ID, text)) return;
   if (await statistika.handleText(CHAT_ID, text)) return; // 📊 Statistika (moderatorniki o'rniga)
   if (await botlar.handleText(CHAT_ID, text)) return; // 🛡 Botlar
+  if (await agentlar.handleText(CHAT_ID, text)) return; // 🏛 Majlis, /bot_qosh, /jamoa
   if (await moderator.handleText(text)) return;
   switch (text) {
     case "💡 G'oya yozaman":
@@ -283,6 +285,7 @@ async function pollLoop() {
   moderator.startAutopostLoop();
   kompyuter.startKuzatuv(CHAT_ID);
   botlar.start(CHAT_ID, claudeSessiya.kuzatuvchigaBuyruq);
+  agentlar.start(CHAT_ID, botlar.guruhniOl, botlar.guruhHolati); // 🏛 kunlik majlis
   let offset = getOffset();
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -298,6 +301,7 @@ async function pollLoop() {
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSessiya.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await statistika.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await botlar.handleCallback(cq))) continue;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await agentlar.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await kompyuter.handleCallback(cq))) continue;
             await moderator.handleCallback(cq);
             continue;

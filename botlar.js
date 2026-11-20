@@ -63,12 +63,31 @@ function belgi(h) {
   return h.ishlayapti === true ? '🟢' : h.ishlayapti === false ? '🔴' : '⚪';
 }
 
+const BELGI = { avtobot: '🚗', gps: '📍', bazis: '🪚', jarvis: '🎙', pult: '🎛', pultcam: '📷' };
+
+// "Wed 2026-11-18 12:06:33 +05" -> "2 kun 3 soat"
+function qanchadan(s) {
+  const t = Date.parse(String(s || '').replace(/^\w{3}\s+/, '').replace(' ', 'T').replace(/\s*([+-]\d{2})$/, '$1:00'));
+  if (!t) return '';
+  const d = Math.max(0, Math.floor((Date.now() - t) / 60000));
+  const kun = Math.floor(d / 1440);
+  const soat = Math.floor((d % 1440) / 60);
+  return kun ? `${kun} kun ${soat} soat` : soat ? `${soat} soat ${d % 60} daq` : `${d} daq`;
+}
+
 async function royxatMatni() {
-  let m = '🛡 Botlar\n';
+  let m = '🛡━━━━ BOTLAR JAMOASI ━━━━🛡\n';
+  let yoniq = 0;
+  let jami = 0;
   for (const b of BOTLAR) {
     const h = await holat(b);
-    m += `\n${belgi(h)} ${b.nomi} — ${h.izoh}${h.qachondan ? `\n      ${h.qachondan} dan beri` : ''}`;
+    jami += 1;
+    if (h.ishlayapti) yoniq += 1;
+    const izoh = h.ishlayapti === true ? 'ishlayapti' : h.ishlayapti === false ? `TO'XTAGAN (${h.izoh})` : h.izoh;
+    const uzoq = h.ishlayapti && h.qachondan ? qanchadan(h.qachondan) : '';
+    m += `\n${belgi(h)} ${BELGI[b.id] || '🤖'} ${b.nomi}\n      ${izoh}${uzoq ? ` · ⏱ ${uzoq}dan beri` : ''}`;
   }
+  m += `\n\n${yoniq === jami ? '💪' : yoniq ? '⚡' : '😴'} Faol: ${yoniq}/${jami}`;
   m += "\n\n👇 Botni tanlang: oxirgi ishlari va boshqarish.";
   return m;
 }
@@ -243,22 +262,22 @@ async function handleGroupMessage(message) {
     return true;
   }
   if (id === guruhId && buyruq === '/statistika') {
-    await tg.sendMessage(id, require('./statistika').hisobot(7));
+    await tg.sendMessage(id, require('./statistika').botlarHisoboti(7));
     return true;
   }
-  // 🤝 jamoaga buyruq (agentlar.js) - hozircha faqat egasidan
+  // 🤝 jamoaga buyruq / 🏛 majlis (agentlar.js) - hozircha faqat egasidan
   if (id === guruhId && egasi) {
     const agentlar = require('./agentlar');
-    const vazifa = await agentlar.buyruqAjrat(message);
-    if (vazifa) {
-      tg.reaksiya(id, message.message_id, '👀');
-      agentlar.bajar(id, vazifa, guruhHolati)
-        .then(() => tg.reaksiya(id, message.message_id, '👌'))
-        .catch((e) => { console.error('agentlar:', e.message); tg.reaksiya(id, message.message_id, '🤷'); });
+    if (await agentlar.buyruqAjrat(message)) {
+      agentlar.guruhBuyrugi(id, message, guruhHolati).catch((e) => console.error('agentlar:', e.message));
       return true;
     }
   }
   return false;
+}
+
+function guruhniOl() {
+  return guruhId;
 }
 
 let oxirgiErtalab = '';
@@ -268,7 +287,7 @@ async function ertalabkiHisobot() {
   const kun = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
   if (t < '09:00' || t > '09:10' || oxirgiErtalab === kun) return;
   oxirgiErtalab = kun;
-  await tg.sendMessage(guruhId, `☀️ Xayrli tong! Botlar holati:\n${(await guruhHolati()).replace('🛡 Botlar\n', '')}`);
+  await tg.sendMessage(guruhId, `☀️ Xayrli tong, jamoa! 👋\n\n${await guruhHolati()}`);
 }
 
 function start(chatId, buyruqFn) {
@@ -283,4 +302,4 @@ function start(chatId, buyruqFn) {
   }, 90 * 1000);
 }
 
-module.exports = { handleText, handleCallback, handleGroupMessage, kompyuterdanKeldi, start };
+module.exports = { handleText, handleCallback, handleGroupMessage, kompyuterdanKeldi, start, guruhniOl, guruhHolati };

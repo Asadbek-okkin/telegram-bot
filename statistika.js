@@ -24,6 +24,7 @@ const TURLAR = {
   post: '📢 Kanal posti',
   goya: "💡 G'oya yozildi",
   mavzu: '🔎 Guruhdan mavzu topildi',
+  majlis: "🏛 Majlis o'tkazildi",
   agent_claude: '🤝 Claude Asadbek vazifa bajardi',
   agent_avtobot: '🤝 Avtobot vazifa bajardi',
   agent_jarvis: '🤝 Jarvis vazifasi',
@@ -102,18 +103,18 @@ function hisobot(n) {
   }
   const nomi = n === 1 ? 'Bugun' : `Oxirgi ${n} kun`;
   const umumiy = Object.values(jami).reduce((a, b) => a + b, 0);
-  let m = `📊 Statistika — ${nomi}\nJami: ${umumiy} ta ish\n`;
+  let m = `📊━━━━ STATISTIKA ━━━━📊\n📅 ${nomi}\n🔥 Jami: ${umumiy} ta ish ${umumiy >= 50 ? '🚀' : umumiy >= 10 ? '💪' : umumiy ? '👍' : '😴'}\n`;
   const qatorlar = Object.entries(jami).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   if (!qatorlar.length) {
-    m += '\nBu davrda hali hech narsa qilinmagan.';
+    m += '\n🌙 Bu davrda hali hech narsa qilinmagan.';
   } else {
     const eng = qatorlar[0][1];
-    m += '\nTurlari bo\'yicha:\n';
-    for (const [t, v] of qatorlar) m += `\n${TURLAR[t] || t}: ${v}\n${ustun(v, eng)}`;
+    m += '\n🗂 Turlari bo\'yicha:\n';
+    for (const [i, [t, v]] of qatorlar.entries()) m += `\n${i === 0 ? '🏆 ' : ''}${TURLAR[t] || t} — ${v}\n${ustun(v, eng)}`;
   }
   if (n > 1) {
     const eng = Math.max(1, ...Object.values(kunJami));
-    m += '\n\nKunlar bo\'yicha:\n';
+    m += '\n\n📅 Kunlar bo\'yicha:\n';
     const korsat = n > 14 ? kunlar.filter((k) => kunJami[k] > 0) : kunlar;
     for (const k of korsat) {
       const [, oy, kun] = k.split('-');
@@ -125,9 +126,42 @@ function hisobot(n) {
   return m;
 }
 
+// 🤝 Botlar jamoasi statistikasi: har bot nechta vazifa bajargan (agent_* qaydlari), medallar bilan
+function botlarHisoboti(n) {
+  const d = oqi();
+  const jami = {};
+  let majlis = 0;
+  for (const k of kunlarRoyxati(n)) {
+    for (const [t, v] of Object.entries((d.kunlar || {})[k] || {})) {
+      if (t.startsWith('agent_')) jami[t.slice(6)] = (jami[t.slice(6)] || 0) + v;
+      if (t === 'majlis') majlis += v;
+    }
+  }
+  let A = {};
+  try { A = require('./agentlar').agentlar(); } catch {}
+  const qator = Object.entries(jami).sort((a, b) => b[1] - a[1]);
+  const umumiy = qator.reduce((s, [, v]) => s + v, 0);
+  let m = `🏆━━ BOTLAR STATISTIKASI ━━🏆\n📅 ${n === 1 ? 'Bugun' : `Oxirgi ${n} kun`}\n`;
+  if (!qator.length) {
+    m += "\n😴 Hali hech bir bot vazifa bajarmagan.\n💡 Guruhda «Vazifa: ...» yozing yoki «Claude, majlis» deng.";
+  } else {
+    const medal = ['🥇', '🥈', '🥉'];
+    const eng = qator[0][1];
+    for (const [i, [id, v]] of qator.entries()) {
+      const a = A[id] || {};
+      m += `\n${medal[i] || '🎖'} ${a.belgi || '🤖'} ${a.nomi || id} — ${v} ta vazifa\n${ustun(v, eng)}`;
+    }
+    m += `\n\n🔥 Jami: ${umumiy} ta vazifa ${umumiy >= 20 ? '🚀' : '💪'}`;
+  }
+  const bosh = Object.entries(A).filter(([id]) => !jami[id]).map(([, a]) => `${a.belgi || '🤖'} ${a.nomi}`);
+  if (bosh.length && qator.length) m += `\n😴 Vazifa olmaganlar: ${bosh.join(', ')}`;
+  m += `\n🏛 Majlislar: ${majlis}`;
+  return m;
+}
+
 function tugmalar(n) {
   const b = (son, matn) => ({ text: (son === n ? '• ' : '') + matn, callback_data: `st:${son}` });
-  return { inline_keyboard: [[b(1, 'Bugun'), b(7, '7 kun'), b(30, '30 kun')]] };
+  return { inline_keyboard: [[b(1, '📅 Bugun'), b(7, '🗓 7 kun'), b(30, '📆 30 kun')], [{ text: '🏆 Botlar jamoasi', callback_data: 'st:b' }]] };
 }
 
 async function handleText(chatId, text) {
@@ -139,10 +173,14 @@ async function handleText(chatId, text) {
 async function handleCallback(cq) {
   const data = cq.data || '';
   if (!data.startsWith('st:')) return false;
-  const n = [1, 7, 30].includes(Number(data.slice(3))) ? Number(data.slice(3)) : 7;
   await tg.answerCallbackQuery(cq.id);
+  if (data === 'st:b') {
+    await tg.editMessageText(cq.message.chat.id, cq.message.message_id, botlarHisoboti(7), { reply_markup: tugmalar(0) });
+    return true;
+  }
+  const n = [1, 7, 30].includes(Number(data.slice(3))) ? Number(data.slice(3)) : 7;
   await tg.editMessageText(cq.message.chat.id, cq.message.message_id, hisobot(n), { reply_markup: tugmalar(n) });
   return true;
 }
 
-module.exports = { qayd, handleText, handleCallback, hisobot };
+module.exports = { qayd, handleText, handleCallback, hisobot, botlarHisoboti };
