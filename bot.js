@@ -13,6 +13,7 @@ const claudeSessiya = require('./claude-sessiya');
 const claude = require('./claude-api');
 const gemini = require('./gemini-api');
 const bazisShifr = require('./bazis-shifr');
+const statistika = require('./statistika');
 
 const CHAT_ID = '313364362';
 const OFFSET_FILE = path.join(os.homedir(), '.claude', 'pm-telegram-offset.txt');
@@ -49,6 +50,7 @@ function setOffset(n) {
 }
 
 function appendIdea(text) {
+  statistika.qayd('goya');
   let list = [];
   try { list = JSON.parse(fs.readFileSync(IDEAS_FILE, 'utf8')); } catch {}
   list.push({ text, at: new Date().toISOString() });
@@ -194,6 +196,7 @@ async function handleText(text) {
   console.log(`[telegram] received: ${text}`);
   if (await kompyuter.handleText(CHAT_ID, text)) return;
   if (await claudeSessiya.handleText(CHAT_ID, text)) return;
+  if (await statistika.handleText(CHAT_ID, text)) return; // 📊 Statistika (moderatorniki o'rniga)
   if (await moderator.handleText(text)) return;
   switch (text) {
     case "💡 G'oya yozaman":
@@ -228,6 +231,46 @@ async function handleText(text) {
   await handleAiChat(text);
 }
 
+// Shaxsiy chatdagi bitta xabar. Natija: 'ok' | 'izohlangan' (o'zi sababini yozdi) | 'tushunmadim'
+async function shaxsiyXabar(message) {
+  // 🎤 ovozli xabar -> matn; keyin oddiy matn kabi Claude sessiyasiga/savoliga yo'naltiriladi
+  const ovoz = message.voice || message.audio || message.video_note;
+  if (ovoz && !message.text) {
+    try {
+      const buf = await tg.faylYukla(ovoz.file_id);
+      const matn = await gemini.transkript(buf, ovoz.mime_type || (message.video_note ? 'video/mp4' : 'audio/ogg'));
+      if (!matn) {
+        await tg.sendMessage(CHAT_ID, '🤷 Tushunmadim — ovozli xabarda gap eshitilmadi.', { reply_to_message_id: message.message_id });
+        return 'izohlangan';
+      }
+      await tg.sendMessage(CHAT_ID, `🎤 Eshitdim: ${matn}`, { reply_to_message_id: message.message_id });
+      statistika.qayd('ovoz');
+      message.text = matn;
+    } catch (e) {
+      console.error('ovoz:', e.message);
+      await tg.sendMessage(CHAT_ID, `🤷 Tushunmadim — ovozni matnga aylantirib bo'lmadi: ${e.message}`, { reply_to_message_id: message.message_id });
+      return 'izohlangan';
+    }
+  }
+  if (message.text && (await claudeSessiya.handleMessage(message))) return 'ok';
+  if (message.text && (await claudeSavol.handleMessage(message))) return 'ok';
+  if (message.text && (await claudeSessiya.handleFallback(message))) return 'ok';
+  // 🖼 skrinshot + izoh -> Claude sessiyasiga (reply / ochiq karta / tanlash); sessiya yo'q bo'lsa - kanal posti
+  if ((message.photo || message.document)
+    && (await claudeSessiya.handlePhoto(message, (m) => (m.photo ? moderator.handlePhoto(m) : tg.sendMessage(CHAT_ID, 'Kanalga faqat rasm (fayl emas) yuboriladi.'))))) return 'ok';
+  if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) return 'ok';
+  if (message.photo) {
+    await moderator.handlePhoto(message);
+    return 'ok';
+  }
+  if (message.text) {
+    joriyXabarVaqti = (message.date || 0) * 1000;
+    await handleText(message.text);
+    return 'ok';
+  }
+  return 'tushunmadim'; // stiker, noma'lum fayl va h.k.
+}
+
 async function pollLoop() {
   if (!tg.TOKEN) {
     console.log('Telegram bot: PM_TELEGRAM_BOT_TOKEN topilmadi - bot ochirilgan.');
@@ -250,6 +293,7 @@ async function pollLoop() {
             const cq = update.callback_query;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSavol.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await claudeSessiya.handleCallback(cq))) continue;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await statistika.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await kompyuter.handleCallback(cq))) continue;
             await moderator.handleCallback(cq);
             continue;
@@ -258,32 +302,24 @@ async function pollLoop() {
           if (!message) continue;
           const chatIdStr = String(message.chat.id);
           if (chatIdStr === CHAT_ID) {
-            // 🎤 ovozli xabar -> matn; keyin oddiy matn kabi Claude sessiyasiga/savoliga yo'naltiriladi
-            const ovoz = message.voice || message.audio || message.video_note;
-            if (ovoz && !message.text) {
-              try {
-                const buf = await tg.faylYukla(ovoz.file_id);
-                const matn = await gemini.transkript(buf, ovoz.mime_type || (message.video_note ? 'video/mp4' : 'audio/ogg'));
-                if (!matn) { await tg.sendMessage(CHAT_ID, "🎤 Ovozli xabarda gap eshitilmadi.", { reply_to_message_id: message.message_id }); continue; }
-                await tg.sendMessage(CHAT_ID, `🎤 Eshitdim: ${matn}`, { reply_to_message_id: message.message_id });
-                message.text = matn;
-              } catch (e) {
-                console.error('ovoz:', e.message);
-                await tg.sendMessage(CHAT_ID, `🎤 Ovozni matnga aylantirib bo'lmadi: ${e.message}`, { reply_to_message_id: message.message_id });
-                continue;
-              }
+            // 👀 = xabar ko'rildi, ishlanmoqda; 👌 = bajarildi; 🤷 = tushunmadi (Telegram reaksiyalarida ✅ yo'q)
+            tg.reaksiya(CHAT_ID, message.message_id, '👀');
+            let natija;
+            try {
+              natija = await shaxsiyXabar(message);
+            } catch (e) {
+              console.error('xabar ishlovi:', e.message);
+              natija = 'xato';
             }
-            if (message.text && (await claudeSessiya.handleMessage(message))) continue;
-            if (message.text && (await claudeSavol.handleMessage(message))) continue;
-            if (message.text && (await claudeSessiya.handleFallback(message))) continue;
-            // 🖼 skrinshot + izoh -> Claude sessiyasiga (reply / ochiq karta / tanlash); sessiya yo'q bo'lsa - kanal posti
-            if ((message.photo || message.document)
-              && (await claudeSessiya.handlePhoto(message, (m) => (m.photo ? moderator.handlePhoto(m) : tg.sendMessage(CHAT_ID, 'Kanalga faqat rasm (fayl emas) yuboriladi.'))))) continue;
-            if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) continue;
-            if (message.photo) await moderator.handlePhoto(message);
-            else if (message.text) {
-              joriyXabarVaqti = (message.date || 0) * 1000;
-              await handleText(message.text);
+            if (natija === 'ok') {
+              tg.reaksiya(CHAT_ID, message.message_id, '👌');
+            } else {
+              tg.reaksiya(CHAT_ID, message.message_id, '🤷');
+              if (natija === 'tushunmadim') {
+                await tg.sendMessage(CHAT_ID, "🤷 Tushunmadim. Matn, 🎤 ovozli xabar yoki 🖼 rasm yuboring, yoki pastdagi tugmalardan foydalaning.", { reply_to_message_id: message.message_id });
+              } else if (natija === 'xato') {
+                await tg.sendMessage(CHAT_ID, "🤷 Tushunmadim — ishlashda xato chiqdi. Qayta urinib ko'ring.", { reply_to_message_id: message.message_id });
+              }
             }
           } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
             await moderator.handleGroupMessage(message);

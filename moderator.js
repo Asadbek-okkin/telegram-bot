@@ -475,6 +475,7 @@ async function handleGroupMessage(message) {
     if (mavzu && !d.mavzular.includes(mavzu)) {
       d.mavzular.push(mavzu);
       save(d);
+      require('./statistika').qayd('mavzu');
       await tg.sendMessage(
         CHAT_ID,
         `Guruhdan yangi mavzu saqlandi!\n\nGuruh: @${chatUsername}\nMavzu: ${mavzu}\nAsl xabar: ${message.text.slice(0, 100)}...`

@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const tg = require('./telegram-api');
 const claudeSavol = require('./claude-savol');
 const claudeSessiya = require('./claude-sessiya');
+const statistika = require('./statistika');
 
 const PC_KALIT = process.env.PC_KALIT || '';
 const DASTUR_NOMI = { yandex: 'Yandex Brauzer', telegram: 'Telegram', bazis: 'Bazis-Mebelshik', '1c': '1C' };
@@ -142,6 +143,8 @@ async function natijaKeldi(n) {
   const b = yuborilgan.get(n.id);
   if (!b) return;
   yuborilgan.delete(n.id);
+  if (n.ok && b.amal === 'ochir') statistika.qayd('pc_ochirish');
+  if (n.ok && b.amal === 'dastur') statistika.qayd('pc_dastur');
   if (b.amal === 'ochir') {
     if (n.ok) {
       await tg.editMessageText(b.chatId, b.msgId, `⏻ Kompyuter ${n.kechikish} soniyadan keyin o'chadi.\nO'chgach bot o'zi xabar beradi.`, {
@@ -294,6 +297,7 @@ async function tekshir() {
   if (yoniq !== oxirgiYoniq) console.log(`[kompyuter] yoniq=${yoniq} oldingi=${oxirgiYoniq} kutayotgan=${kutayotganlar.size} jim=${Math.round((Date.now() - oxirgiAloqa) / 1000)}s`);
   if (oxirgiYoniq !== null && yoniq !== oxirgiYoniq) {
     if (yoniq) {
+      statistika.qayd('pc_yoqish');
       const izoh = yakshanbami() ? "\n\nBugun yakshanba — kerak bo'lmasa o'chirib qo'ying." : '';
       await tg.sendMessage(CHAT_ID, `💻 Kompyuter YOQILDI (${toshkentVaqti()}).${izoh}\n\n${holatMatni()}`, { reply_markup: holatTugmalari() });
     } else {

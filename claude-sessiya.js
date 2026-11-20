@@ -8,6 +8,7 @@ Kompyuterdagi hook (hooks/claude_telegram.py holat) har hodisada shu serverga ho
 const fs = require('fs');
 const path = require('path');
 const tg = require('./telegram-api');
+const statistika = require('./statistika');
 
 const CHAT_ID = '313364362';
 const TUGMA = '🤖 Claude Code';
@@ -271,6 +272,11 @@ async function vsNatija(n) {
   const b = vsYuborilgan.get(String(n.id || ''));
   if (!b) return;
   vsYuborilgan.delete(b.id);
+  if (n.ok) {
+    if (b.amal === 'ai-yoq' || b.amal === 'ai-ochir') statistika.qayd('ai_studio');
+    else if (b.amal === 'yop') statistika.qayd('claude_yopish');
+    else if (!String(b.amal || '').startsWith('ai-')) statistika.qayd('vscode');
+  }
   if (String(b.amal || '').startsWith('ai-')) {
     if (n.ai && typeof n.ai === 'object') aiHolat = n.ai;
     const bosh = n.ok
@@ -345,7 +351,8 @@ function qismlarga(matn, n = 3800) {
   return q;
 }
 
-async function bildir(s, xabar) {
+async function bildir(s, xabar, qaydQil = true) {
+  if (qaydQil) statistika.qayd('claude_javob');
   let x = xabar.trim();
   if (x.length > 20000) x = '…(boshi qisqartirildi)\n' + x.slice(-20000);
   const bosh = `🤖 Claude javobi — ${s.mavzu || s.loyiha}\n📁 ${s.loyiha}\n\n`;
@@ -478,7 +485,7 @@ async function handleCallback(cq) {
   if (data.startsWith('cs:tol:')) {
     const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(data.slice(7)));
     await tg.answerCallbackQuery(cq.id, { text: s && s.natija ? 'Yuborilmoqda' : 'Javob topilmadi' });
-    if (s && s.natija) await bildir(s, s.natija);
+    if (s && s.natija) await bildir(s, s.natija, false);
     return true;
   }
   // ⏹ Sessiyani yopish: tasdiq -> kuzatuvchi kompyuterda shu sessiya jarayonini to'xtatadi
@@ -562,6 +569,7 @@ async function handleCallback(cq) {
 }
 
 async function yubor(s, text, message) {
+  statistika.qayd(text.includes('[[rasm:') ? 'claude_rasm' : 'claude_xabar');
   const qachonOladi = s.holat === 'ishlayapti'
     ? 'Claude ishlayapti — keyingi qadamida oladi.'
     : s.holat === 'kutyapti'

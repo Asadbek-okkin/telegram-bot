@@ -47,6 +47,7 @@ function json(res, kod, obj) {
 function javobQoy(s, javob) {
   if (s.javob) return false;
   s.javob = javob;
+  require('./statistika').qayd('claude_ruxsat');
   for (const k of s.kutuvchilar) { clearTimeout(k.timer); json(k.res, 200, { javob }); }
   s.kutuvchilar.clear();
   return true;

@@ -71,4 +71,11 @@ async function faylYukla(fileId) {
   });
 }
 
-module.exports = { TOKEN, apiCall, faylYukla, sendMessage, sendPhoto, editMessageText, answerCallbackQuery, getUpdates };
+// Xabarga reaksiya (faqat Telegram ruxsat bergan emojilar: 👀 👌 🤷 ...). Xato bo'lsa jim o'tadi.
+function reaksiya(chatId, messageId, emoji) {
+  return apiCall('setMessageReaction', { chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji }] })
+    .then((r) => { if (r && !r.ok) console.error('reaksiya:', r.description); })
+    .catch(() => {});
+}
+
+module.exports = { TOKEN, apiCall, faylYukla, reaksiya, sendMessage, sendPhoto, editMessageText, answerCallbackQuery, getUpdates };
