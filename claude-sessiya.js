@@ -128,7 +128,7 @@ function json(res, kod, obj) {
 function navbatniOl(s) {
   const x = s.navbat || [];
   s.navbat = [];
-  for (const n of x) if (n.ackId) tg.editMessageText(CHAT_ID, n.ackId, `✅ Claude xabaringizni oldi (${s.mavzu || s.loyiha}):\n${n.matn}`);
+  for (const n of x) if (n.ackId) tg.editMessageText(CHAT_ID, n.ackId, `✅ Claude xabaringizni oldi (${s.mavzu || s.loyiha}):\n${n.matn.replace(/\[\[rasm:[0-9a-f]+\]\]/g, '🖼 rasm')}`);
   return x.map((n) => n.matn);
 }
 
@@ -385,12 +385,19 @@ function bodyOqi(req) {
 function handleHttp(req, res, kalitTogri) {
   if (req.method !== 'POST') return false;
   const yol = req.url.split('?')[0].replace(/\/+$/, '');
-  const amal = ['/holat', '/vs-kut', '/vs-natija', '/kut'].find((a) => yol.endsWith(a));
+  const amal = ['/holat', '/vs-kut', '/vs-natija', '/rasm', '/kut'].find((a) => yol.endsWith(a));
   if (!amal) return false;
   if (!kalitTogri(req.headers['x-kalit'])) { res.writeHead(403); res.end(); return true; }
   bodyOqi(req).then((b) => {
     try {
       if (amal === '/holat') return json(res, 200, holatKeldi(b));
+      if (amal === '/rasm') { // kompyuterdagi hook Telegram'dan kelgan rasmni yuklab oladi
+        const id = String(b.id || '');
+        const f = path.join(RASM_PAPKA, `${id}.jpg`);
+        if (!/^[0-9a-f]{16}$/.test(id) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+        return res.end(fs.readFileSync(f));
+      }
       if (amal === '/vs-kut') return vsKut(res);
       if (amal === '/vs-natija') {
         vsNatija(b).catch((e) => console.error('claude-sessiya vs-natija:', e.message));
@@ -424,6 +431,7 @@ async function handleCallback(cq) {
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: tugmalar(list) });
     return true;
   }
+  if (data.startsWith('cs:rs:') || data.startsWith('cs:rk:')) return rasmCallback(cq, data, msgId);
   if (data === 'cs:ai') {
     yozishSid = null;
     await tg.answerCallbackQuery(cq.id);
@@ -582,4 +590,68 @@ async function handleFallback(message) {
   return true;
 }
 
-module.exports = { KEYBOARD_ROWS, handleHttp, handleText, handleCallback, handleMessage, handleFallback };
+// ---------------------------------------------------------------- 🖼 Skrinshot (rasm + izoh) sessiyaga
+// Rasm serverda saqlanadi (data/claude-rasmlar/<id>.jpg); sessiyaga matn ichida [[rasm:<id>]] belgisi boradi,
+// kompyuterdagi hook uni POST /rasm orqali yuklab olib, fayl yo'liga almashtiradi (Claude Read bilan ko'radi).
+const RASM_PAPKA = path.join(__dirname, 'data', 'claude-rasmlar');
+const kutilganRasmlar = new Map(); // kalit -> {message, kanalga, vaqt}
+
+function rasmFaylId(message) {
+  if (message.photo && message.photo.length) return message.photo[message.photo.length - 1].file_id;
+  const d = message.document;
+  if (d && /^image\//.test(d.mime_type || '')) return d.file_id;
+  return null;
+}
+
+async function rasmniSessiyaga(s, message) {
+  fs.mkdirSync(RASM_PAPKA, { recursive: true });
+  const eski = Date.now() - 3 * 24 * 3600 * 1000;
+  for (const f of fs.readdirSync(RASM_PAPKA)) {
+    try { if (fs.statSync(path.join(RASM_PAPKA, f)).mtimeMs < eski) fs.unlinkSync(path.join(RASM_PAPKA, f)); } catch {}
+  }
+  const id = require('crypto').randomBytes(8).toString('hex');
+  fs.writeFileSync(path.join(RASM_PAPKA, `${id}.jpg`), await tg.faylYukla(rasmFaylId(message)));
+  const izoh = (message.caption || '').trim();
+  await yubor(s, `${izoh || "(izohsiz rasm — rasmga qarab nima kerakligini tushunib oling)"}\n[[rasm:${id}]]`, message);
+}
+
+// true - rasm Claude'ga ketdi yoki qayerga yuborishni so'radik; false - Claude sessiyasi yo'q (kanal postiga)
+async function handlePhoto(message, kanalga) {
+  if (!rasmFaylId(message)) return false;
+  const replyId = message.reply_to_message && message.reply_to_message.message_id;
+  let s = replyId ? Object.values(sessiyalar).find((x) => x.bildirishId === replyId || (x.bildirishIdlar || []).includes(replyId)) : null;
+  if (!s && yozishSid) s = sessiyalar[yozishSid];
+  if (s) { await rasmniSessiyaga(s, message); return true; }
+  const list = tartibli();
+  if (!list.length) return false;
+  const kalit = String(message.message_id);
+  kutilganRasmlar.set(kalit, { message, kanalga, vaqt: Date.now() });
+  for (const [k, v] of kutilganRasmlar) if (Date.now() - v.vaqt > 3600 * 1000) kutilganRasmlar.delete(k);
+  const q = list.slice(0, 8).map((x, i) => [{ text: `🤖 ${i + 1}. ${qisqart(nomi(x), 34)}`, callback_data: `cs:rs:${kalit}:${x.sid.slice(0, 12)}` }]);
+  q.push([{ text: '📢 Kanalga post', callback_data: `cs:rk:${kalit}` }]);
+  await tg.sendMessage(CHAT_ID, '🖼 Bu rasm qayerga? Claude sessiyasini tanlang:', { reply_to_message_id: message.message_id, reply_markup: { inline_keyboard: q } });
+  return true;
+}
+
+async function rasmCallback(cq, data, msgId) {
+  const [, tur, kalit, bosh] = data.split(':');
+  const k = kutilganRasmlar.get(kalit);
+  if (!k) {
+    await tg.answerCallbackQuery(cq.id, { text: 'Rasm eskirgan — qayta yuboring' });
+    return true;
+  }
+  kutilganRasmlar.delete(kalit);
+  await tg.answerCallbackQuery(cq.id);
+  if (tur === 'rk') {
+    await tg.editMessageText(CHAT_ID, msgId, '📢 Kanal postiga yuborildi.');
+    await k.kanalga(k.message);
+    return true;
+  }
+  const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));
+  if (!s) { await tg.editMessageText(CHAT_ID, msgId, 'Bu sessiya yopilgan, rasm yuborilmadi.'); return true; }
+  await tg.editMessageText(CHAT_ID, msgId, `🖼 → ${nomi(s)}`);
+  await rasmniSessiyaga(s, k.message);
+  return true;
+}
+
+module.exports = { KEYBOARD_ROWS, handleHttp, handleText, handleCallback, handleMessage, handleFallback, handlePhoto };

@@ -266,6 +266,9 @@ async function pollLoop() {
             if (message.text && (await claudeSessiya.handleMessage(message))) continue;
             if (message.text && (await claudeSavol.handleMessage(message))) continue;
             if (message.text && (await claudeSessiya.handleFallback(message))) continue;
+            // 🖼 skrinshot + izoh -> Claude sessiyasiga (reply / ochiq karta / tanlash); sessiya yo'q bo'lsa - kanal posti
+            if ((message.photo || message.document)
+              && (await claudeSessiya.handlePhoto(message, (m) => (m.photo ? moderator.handlePhoto(m) : tg.sendMessage(CHAT_ID, 'Kanalga faqat rasm (fayl emas) yuboriladi.'))))) continue;
             if (message.document && (await bazisShifr.handleDocument(CHAT_ID, message))) continue;
             if (message.photo) await moderator.handlePhoto(message);
             else if (message.text) {

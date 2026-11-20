@@ -386,8 +386,36 @@ def holat_fayl(sid, tur):
     return os.path.join(HOLAT_PAPKA, f"{sid}.{tur}")
 
 
+def rasm_yukla(rid):
+    """Telegram'dan yuborilgan skrinshotni serverdan olib, ~/.claude/tg-sessiya/rasmlar/<id>.jpg ga saqlaydi."""
+    papka = os.path.join(HOLAT_PAPKA, "rasmlar")
+    os.makedirs(papka, exist_ok=True)
+    yol = os.path.join(papka, rid + ".jpg")
+    if not os.path.exists(yol):
+        req = urllib.request.Request(SERVER + "/rasm", data=json.dumps({"id": rid}).encode("utf-8"),
+                                     headers={"Content-Type": "application/json", "X-Kalit": kalit()}, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+        with open(yol, "wb") as f:
+            f.write(data)
+    return yol
+
+
+def rasmlarni_almashtir(matn):
+    import re
+
+    def ozgar(m):
+        try:
+            return f"[Telegram'dan yuborilgan rasm (skrinshot) - Read asbobi bilan ochib ko'ring: {rasm_yukla(m.group(1))}]"
+        except Exception as e:
+            return f"[rasm yuklab olinmadi: {e}]"
+
+    return re.sub(r"\[\[rasm:([0-9a-f]{16})\]\]", ozgar, matn)
+
+
 def telegram_matni(xabarlar):
-    return "Foydalanuvchi Telegram (@claude_asadbek_bot) orqali shu sessiyaga yozdi - buni yangi topshiriq/javob deb bajaring:\n" + "\n---\n".join(xabarlar)
+    return ("Foydalanuvchi Telegram (@claude_asadbek_bot) orqali shu sessiyaga yozdi - buni yangi topshiriq/javob deb bajaring:\n"
+            + "\n---\n".join(rasmlarni_almashtir(x) for x in xabarlar))
 
 
 def kutishni_toxtat(sid):
