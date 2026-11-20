@@ -173,6 +173,7 @@ function kalitTogri(berilgan) {
 
 function serverniBoshla() {
   const srv = http.createServer((req, res) => {
+    if (require('./reliz').handleHttp(req, res)) return; // GitHub reliz oynasi (Kamera AI yangilanishi)
     if (claudeSavol.handleHttp(req, res, kalitTogri)) return; // Claude Code savollari (claude-savol.js)
     if (claudeSessiya.handleHttp(req, res, kalitTogri)) return; // Claude Code sessiyalari (claude-sessiya.js)
     if (req.method === 'POST' && req.url.replace(/\/+$/, '').endsWith('/uygotuvchi')) {
