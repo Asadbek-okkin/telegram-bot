@@ -211,6 +211,7 @@ function statistika() {
     jami: q.length, bugun: faol(1), hafta: faol(7), oy: faol(30),
     ovozSoni: yigim.ovozSoni || 0,
     kunlik,
+    platformalar: sanaq(q, (x) => (String(x.v || '').startsWith('ios') ? '🍏 iPhone' : '🤖 Android')),
     davlatlar: sanaq(q, (x) => x.davlat),
     viloyatlar: sanaq(q, (x) => (x.davlat ? `${x.davlat} — ${x.viloyat || '?'}` : null)),
     shaharlar: sanaq(q, (x) => (x.shahar ? `${x.shahar} (${x.kod || '?'})` : null)).slice(0, 50),
