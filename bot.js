@@ -331,6 +331,7 @@ async function pollLoop() {
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await statistika.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await botlar.handleCallback(cq))) continue;
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await agentlar.handleCallback(cq))) continue;
+            if (String(cq.message && cq.message.chat.id) === CHAT_ID && (await require('./klaviatura').handleCallback(cq))) continue; // ⌨️ noma'lum odamga ruxsat
             if (String(cq.message && cq.message.chat.id) === CHAT_ID && cq.data === 'yangila:hozir') {
               await tg.answerCallbackQuery(cq.id, { text: 'Yangilanmoqda…' });
               await handleSelfUpdate(); // 🆕 "Yangi versiya chiqdi" xabaridagi tugma

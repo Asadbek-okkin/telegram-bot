@@ -144,20 +144,76 @@ async function handleText(chatId, text) {
   return true;
 }
 
-/** Boshqa odamlar (do'stlar) shaxsiy chatda: /start yoki /klaviatura -> APK + obuna. */
+const begonaEslatildi = new Map(); // id -> vaqt (adminga kuniga 1 marta)
+
+function kimligi(u) {
+  const ism = [u.first_name, u.last_name].filter(Boolean).join(' ') || "ismsiz";
+  return `${ism}${u.username ? ' (@' + u.username + ')' : ''} — id ${u.id}`;
+}
+
+/**
+ * Boshqa odamlar shaxsiy chatda. Noma'lum odamga bot JAVOB BERMAYDI (foydalanuvchi talabi):
+ * faqat adminga "kim yozdi" degan xabar keladi, «✅ Ruxsat» bosilsa - o'sha odam APK va
+ * yangilanishlarni oladi. Ruxsat berilganlar (obunachilar) /start yoki /klaviatura bilan APK oladi.
+ */
 async function begona(message) {
   const text = message.text || '';
-  if (!/^\/(start|klaviatura)\b/.test(text)) return false;
   const id = String(message.chat.id);
   const d = oqi();
   d.obunachilar = d.obunachilar || [];
-  if (!d.obunachilar.includes(id)) { d.obunachilar.push(id); yoz(d); }
+  if (!d.obunachilar.includes(id)) {
+    if ((d.rad || []).includes(id)) return true; // rad etilgan - umuman e'tiborsiz
+    const oldin = begonaEslatildi.get(id);
+    if (ADMIN && (!oldin || Date.now() - oldin > 24 * 3600 * 1000)) {
+      begonaEslatildi.set(id, Date.now());
+      await tg.sendMessage(ADMIN, `👤 Noma'lum odam botga yozdi (javob berilmadi):\n${kimligi(message.from || message.chat)}\nXabari: ${text.slice(0, 200) || '(matnsiz)'}`, {
+        reply_markup: { inline_keyboard: [[
+          { text: '✅ Ruxsat — klaviaturani yuborish', callback_data: `klv:ha:${id}` },
+          { text: "🚫 E'tiborsiz", callback_data: `klv:yoq:${id}` },
+        ]] },
+      }).catch(() => {});
+    }
+    return true;
+  }
+  if (!/^\/(start|klaviatura)\b/.test(text)) return true;
   try {
     await yubor(id);
     await videoYubor(id).catch((e) => console.error('klaviatura video:', e.message)); // qisqa o'quv videolari
   } catch (e) {
     console.error('klaviatura begona:', e.message);
     await tg.sendMessage(id, "Kechirasiz, hozir APK'ni yuborib bo'lmadi. Birozdan keyin /klaviatura deb yozing.");
+  }
+  return true;
+}
+
+/** Admin tugmalari: noma'lum odamga ruxsat berish yoki rad etish. */
+async function handleCallback(cq) {
+  const m = String(cq.data || '').match(/^klv:(ha|yoq):(-?\d+)$/);
+  if (!m) return false;
+  const id = m[2];
+  const d = oqi();
+  d.obunachilar = d.obunachilar || [];
+  d.rad = d.rad || [];
+  const chat = cq.message.chat.id;
+  const msgId = cq.message.message_id;
+  const eski = cq.message.text || '';
+  if (m[1] === 'ha') {
+    if (!d.obunachilar.includes(id)) d.obunachilar.push(id);
+    d.rad = d.rad.filter((x) => x !== id);
+    yoz(d);
+    await tg.answerCallbackQuery(cq.id, { text: 'Ruxsat berildi' }).catch(() => {});
+    await tg.editMessageText(chat, msgId, `${eski}\n\n✅ Ruxsat berildi — klaviatura yuborildi`).catch(() => {});
+    try {
+      await yubor(id);
+      await videoYubor(id).catch(() => {});
+    } catch (e) {
+      await tg.sendMessage(chat, `APK yuborib bo'lmadi: ${e.message}`).catch(() => {});
+    }
+  } else {
+    if (!d.rad.includes(id)) d.rad.push(id);
+    yoz(d);
+    await tg.answerCallbackQuery(cq.id, { text: "E'tiborsiz qoldirildi" }).catch(() => {});
+    await tg.editMessageText(chat, msgId, `${eski}\n\n🚫 E'tiborsiz — bu odamga bot javob bermaydi`).catch(() => {});
   }
   return true;
 }
@@ -206,4 +262,4 @@ async function rasmYubor(chatId, buf, caption) {
   if (!res || !res.ok) throw new Error((res && res.description) || 'sendPhoto xato');
 }
 
-module.exports = { TUGMA, handleText, begona, start, faylYubor, rasmYubor };
+module.exports = { TUGMA, handleText, begona, handleCallback, start, faylYubor, rasmYubor };
