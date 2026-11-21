@@ -136,6 +136,10 @@ function ozgarishlar(oraliq, max = 10) {
   }
 }
 
+function botFayli(f) {
+  return /^[^/]+\.js$/.test(f) || f === 'package.json' || f === 'package-lock.json';
+}
+
 // 🆕 Har soat GitHub tekshiriladi: yangi commit bo'lsa bir marta "Yangi versiya chiqdi — yangilang" + tugma
 let eslatilganVersiya = null;
 function yangiVersiyaKuzat() {
@@ -144,8 +148,15 @@ function yangiVersiyaKuzat() {
       git('fetch --quiet');
       const masofaviy = git('rev-parse @{u}');
       if (masofaviy === versiya().hash || masofaviy === eslatilganVersiya) return;
+      // Faqat botning o'zi (ildizdagi .js, package.json) o'zgargan bo'lsa yangilash so'raladi.
+      // Kompyuter tomoni (hooks/, kompyuter/, deploy/, hujjatlar) o'zgarsa - jim tortib olinadi, bot qayta ishga tushmaydi.
+      const ozgargan = git('diff --name-only HEAD @{u}').split('\n').filter(Boolean);
+      if (!ozgargan.some(botFayli)) {
+        try { git('pull --ff-only --quiet'); } catch (e) { console.error('jim pull:', (e.message || '').slice(0, 200)); }
+        return;
+      }
       eslatilganVersiya = masofaviy;
-      await tg.sendMessage(CHAT_ID, `🆕 Yangi versiya chiqdi — yangilang!\n\nNimalar o'zgardi:\n${ozgarishlar('HEAD..@{u}') || '•'}`, {
+      await tg.sendMessage(CHAT_ID, `🆕 Yangi versiya chiqdi — yangilang!\n\nNimalar o'zgardi:\n${ozgarishlar('HEAD..@{u} -- "*.js" package.json') || '•'}`, {
         reply_markup: { inline_keyboard: [[{ text: '🔄 Yangilash', callback_data: 'yangila:hozir' }]] },
       });
     } catch (e) {
