@@ -83,12 +83,15 @@ function keldi(l) {
   const loyihalar = (Array.isArray(l.loyihalar) ? l.loyihalar : [])
     .filter((x) => x && x.loyiha && Number.isFinite(Number(x.ulush)))
     .slice(0, 5).map((x) => ({ loyiha: String(x.loyiha).slice(0, 60), ulush: Number(x.ulush) }));
-  holat = { vaqt: Number(l.vaqt), five_hour: toza(l.five_hour), seven_day: toza(l.seven_day), loyihalar, ogohlantirilgan: eski.ogohlantirilgan || {} };
+  holat = { vaqt: Number(l.vaqt), five_hour: toza(l.five_hour), seven_day: toza(l.seven_day), loyihalar,
+    ogohlantirilgan: eski.ogohlantirilgan || {}, hisobot: eski.hisobot || { daq: 60, oxirgi: 0 } };
   // haftalik chegaralar: har 10% (10, 20 … 100), har tiklanish davrida har biri bir marta.
   // Bir yo'la bir nechtasi o'tilgan bo'lsa (masalan bot o'chiq turgan) - faqat eng kattasi haqida bitta xabar.
   const w = holat.seven_day;
   if (w) {
-    const davr = String(w.tiklanadi || '');
+    // tiklanish vaqti har safar 1-2 daqiqaga siljiydi (22:59 → 23:00) — davrni 6 soatga yaxlitlaymiz,
+    // aks holda bot buni «yangi hafta» deb o'ylab bir xil «10% ga yetdi» xabarini qayta-qayta yuborardi
+    const davr = String(Math.round((Number(w.tiklanadi) || 0) / 21600));
     const o = holat.ogohlantirilgan;
     if (o.davr !== davr) { o.davr = davr; o.chegaralar = CHEGARALAR.filter((c) => w.foiz >= c && !eski.vaqt); }
     const yangi = CHEGARALAR.filter((c) => w.foiz >= c && !o.chegaralar.includes(c));
@@ -110,15 +113,71 @@ function loyihaRoyxati(list) {
   return list.map((x) => `\n   • ${x.loyiha} — ${x.ulush.toFixed(0)}%`).join('');
 }
 
+// ⏱ Davriy hisobot guruhga: standart har 60 daqiqada; /hisobot buyrug'i bilan sozlanadi
+const ORALIQLAR = [0, 30, 60, 120, 180, 360, 720];
+
+function hisobotSozlama() {
+  if (!holat) holat = {};
+  if (!holat.hisobot) holat.hisobot = { daq: 60, oxirgi: 0 };
+  return holat.hisobot;
+}
+
+function oraliqNomi(d) {
+  return d === 0 ? "o'chirilgan" : d < 60 ? `har ${d} daqiqada` : `har ${d / 60} soatda`;
+}
+
+async function hisobotBuyruq(chatId, text) {
+  const m = /^\/hisobot(?:@\w+)?(?:\s+(\d+))?\s*$/i.exec(String(text || '').trim());
+  if (!m) return false;
+  if (String(chatId) !== String(egaChat)) { // sozlash — faqat egasi (admin)
+    await tg.sendMessage(chatId, '⏱ Hisobot oralig\'ini faqat admin sozlaydi.');
+    return true;
+  }
+  const s = hisobotSozlama();
+  if (m[1] !== undefined) {
+    const d = Number(m[1]);
+    if (!ORALIQLAR.includes(d)) {
+      await tg.sendMessage(chatId, `Mumkin bo'lgan qiymatlar (daqiqa): ${ORALIQLAR.join(', ')}. 0 — o'chirish.`);
+      return true;
+    }
+    s.daq = d;
+    s.oxirgi = Date.now();
+    saqla();
+    await tg.sendMessage(chatId, `✅ Guruhga Claude limiti hisoboti: ${oraliqNomi(d)}.`);
+    return true;
+  }
+  await tg.sendMessage(chatId, `⏱ Guruhga hisobot: ${oraliqNomi(s.daq)}.\n\nO'zgartirish:\n`
+    + '/hisobot 30 — har 30 daqiqada\n/hisobot 60 — har soatda\n/hisobot 180 — har 3 soatda\n'
+    + '/hisobot 360 — har 6 soatda\n/hisobot 720 — har 12 soatda\n/hisobot 0 — o\'chirish');
+  return true;
+}
+
 async function handleText(chatId, text) {
+  if (await hisobotBuyruq(chatId, text)) return true;
   if (!/^\/limit(@\w+)?$/i.test(String(text || '').trim()) && text !== '🤖 Claude limiti') return false;
   await tg.sendMessage(chatId, matn());
   return true;
 }
 
+function davriyTekshir() {
+  try {
+    const s = hisobotSozlama();
+    if (!s.daq || !holat.vaqt) return;
+    if (Date.now() - (s.oxirgi || 0) < s.daq * 60000) return;
+    const g = guruhOl();
+    if (!g) return;
+    s.oxirgi = Date.now();
+    saqla();
+    tg.sendMessage(g, matn()).catch(() => {});
+  } catch {}
+}
+
 function start(chatId, guruhFn) {
   egaChat = chatId;
   guruhOl = guruhFn;
+  const s = hisobotSozlama();
+  if (!s.oxirgi) { s.oxirgi = Date.now(); saqla(); } // birinchi hisobot — oraliq o'tgach (qayta ishga tushganda darrov emas)
+  setInterval(davriyTekshir, 60000);
 }
 
 module.exports = { keldi, matn, qisqa, handleText, start };

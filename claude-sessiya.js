@@ -147,10 +147,55 @@ function json(res, kod, obj) {
   res.end(JSON.stringify(obj));
 }
 
+// ⏳ Jonli holat: Claude xabarni olgach, tasdiq xabari o'zi yangilanib turadi («ishlayapti… 1:25»), tugagach «✅ Bajarildi».
+// Holat faqat xotirada (bot qayta ishga tushsa — eski xabarlar oxirgi holatida qoladi, hech narsa buzilmaydi).
+const jarayonlar = new Map(); // sid -> {boshlandi, xabarlar:[{ackId, matn}]}
+const NUQTALAR = ['⏳', '⌛'];
+
+function qisqaMatn(m) {
+  const t = String(m || '').replace(/\[\[rasm:[0-9a-f]+\]\]/g, '🖼 rasm');
+  return t.length > 300 ? `${t.slice(0, 300)}…` : t;
+}
+
+function vaqtMatni(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function jarayonMatni(s, n, j, i) {
+  return `${NUQTALAR[i % 2]} Claude ishlayapti… ${vaqtMatni(Date.now() - j.boshlandi)}\n📁 ${s.mavzu || s.loyiha}\n\n💬 ${qisqaMatn(n.matn)}`;
+}
+
+function jarayonTugat(sid, s) {
+  const j = jarayonlar.get(sid);
+  if (!j) return;
+  jarayonlar.delete(sid);
+  const vaqt = vaqtMatni(Date.now() - j.boshlandi);
+  for (const n of j.xabarlar) {
+    tg.editMessageText(CHAT_ID, n.ackId, `✅ Bajarildi (${vaqt}) — javob pastda 👇\n📁 ${s.mavzu || s.loyiha}\n\n💬 ${qisqaMatn(n.matn)}`).catch(() => {});
+  }
+}
+
+let jarayonQadam = 0;
+setInterval(() => { // har 10 soniyada ishlayotgan xabarlarni yangilaymiz (Telegram cheklovidan ancha past)
+  jarayonQadam += 1;
+  for (const [sid, j] of jarayonlar) {
+    const s = sessiyalar[sid];
+    if (!s || Date.now() - j.boshlandi > 3 * 3600 * 1000) { jarayonlar.delete(sid); continue; }
+    for (const n of j.xabarlar) tg.editMessageText(CHAT_ID, n.ackId, jarayonMatni(s, n, j, jarayonQadam)).catch(() => {});
+  }
+}, 10000);
+
 function navbatniOl(s) {
   const x = s.navbat || [];
   s.navbat = [];
-  for (const n of x) if (n.ackId) tg.editMessageText(CHAT_ID, n.ackId, `✅ Claude xabaringizni oldi (${s.mavzu || s.loyiha}):\n${n.matn.replace(/\[\[rasm:[0-9a-f]+\]\]/g, '🖼 rasm')}`);
+  const yangi = x.filter((n) => n.ackId);
+  if (yangi.length) {
+    const j = jarayonlar.get(s.sid) || { boshlandi: Date.now(), xabarlar: [] };
+    j.xabarlar.push(...yangi.map((n) => ({ ackId: n.ackId, matn: n.matn })));
+    jarayonlar.set(s.sid, j);
+    for (const n of yangi) tg.editMessageText(CHAT_ID, n.ackId, jarayonMatni(s, n, j, 0)).catch(() => {});
+  }
   return x.map((n) => n.matn);
 }
 
@@ -346,6 +391,7 @@ function holatKeldi(b) {
   const sid = String(b.sid || '').slice(0, 64);
   if (!sid) { saqla(); return { xabarlar: [] }; }
   if (b.holat === 'tugadi') {
+    if (sessiyalar[sid]) jarayonTugat(sid, sessiyalar[sid]);
     delete sessiyalar[sid];
     saqla();
     return { xabarlar: [] };
@@ -358,6 +404,9 @@ function holatKeldi(b) {
   s.oxirgi = Date.now();
   if (b.xabar) { s.natija = String(b.xabar).slice(-20000); s.natijaVaqt = Date.now(); }
   sessiyalar[sid] = s;
+  // Claude javobini yubordi (tayyor/kutyapti + natija) — avvalgi «ishlayapti» xabarlari «✅ Bajarildi» bo'ladi;
+  // shu hisobotda yangi xabar olinsa (b.ol) — u uchun yangi jarayon pastda boshlanadi
+  if (b.xabar && b.holat && b.holat !== 'ishlayapti') jarayonTugat(sid, s);
   const xabarlar = b.ol ? navbatniOl(s) : [];
   saqla();
   if (b.bildir) bildir(s, String(b.xabar || '')).catch((e) => console.error('claude-sessiya bildir:', e.message));
