@@ -419,10 +419,10 @@ function kut(b, res) {
   res.on('close', () => { if (!res.writableEnded) { clearTimeout(k.timer); set.delete(k); } });
 }
 
-function bodyOqi(req) {
+function bodyOqi(req, chegara = 100000) {
   return new Promise((resolve) => {
     let s = '';
-    req.on('data', (c) => { s += c; if (s.length > 100000) req.destroy(); });
+    req.on('data', (c) => { s += c; if (s.length > chegara) req.destroy(); });
     req.on('end', () => { try { resolve(JSON.parse(s || '{}')); } catch { resolve({}); } });
     req.on('error', () => resolve({}));
   });
@@ -431,11 +431,19 @@ function bodyOqi(req) {
 function handleHttp(req, res, kalitTogri) {
   if (req.method !== 'POST') return false;
   const yol = req.url.split('?')[0].replace(/\/+$/, '');
-  const amal = ['/holat', '/vs-kut', '/vs-natija', '/rasm', '/kut'].find((a) => yol.endsWith(a));
+  const amal = ['/holat', '/vs-kut', '/vs-natija', '/rasm', '/rasm-yubor', '/kut'].find((a) => yol.endsWith(a));
   if (!amal) return false;
   if (!kalitTogri(req.headers['x-kalit'])) { res.writeHead(403); res.end(); return true; }
-  bodyOqi(req).then((b) => {
+  bodyOqi(req, amal === '/rasm-yubor' ? 15000000 : 100000).then((b) => {
     try {
+      if (amal === '/rasm-yubor') { // kompyuterdagi Claude adminga rasmli qo'llanma yuboradi: {rasm: base64, izoh}
+        const buf = Buffer.from(String(b.rasm || ''), 'base64');
+        if (buf.length < 100) return json(res, 400, { ok: false, xato: "rasm yo'q" });
+        require('./klaviatura').rasmYubor(CHAT_ID, buf, String(b.izoh || '').slice(0, 1024))
+          .then(() => json(res, 200, { ok: true }))
+          .catch((e) => json(res, 500, { ok: false, xato: e.message }));
+        return;
+      }
       if (amal === '/holat') return json(res, 200, holatKeldi(b));
       if (amal === '/rasm') { // kompyuterdagi hook Telegram'dan kelgan rasmni yuklab oladi
         const id = String(b.id || '');
