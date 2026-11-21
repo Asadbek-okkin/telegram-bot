@@ -8,10 +8,11 @@ const https = require('https');
 const REPOLAR = {
   'kamera-ai': 'Asadbek-okkin/kamera-ai',
   'sof-ozbek-klaviatura': 'Asadbek-okkin/sof-ozbek-klaviatura', // ⌨️ telefon klaviaturasi (klaviatura.js)
+  'ishxona-tarmoq': 'Asadbek-okkin/ishxona-tarmoq', // 🌐 BoshIP.exe va InternetUlash.exe avto-yangilanishi
 };
 const KESH_MS = 60 * 60 * 1000;
 // klaviatura yangilanishi tez yetib borsin: 10 daqiqa (soatiga 6 so'rov - GitHub limiti 60 dan ancha kam)
-const KESH_REPO_MS = { 'sof-ozbek-klaviatura': 10 * 60 * 1000 };
+const KESH_REPO_MS = { 'sof-ozbek-klaviatura': 10 * 60 * 1000, 'ishxona-tarmoq': 10 * 60 * 1000 };
 const kesh = {}; // repo -> {vaqt, matn}
 
 function ol(url) {
