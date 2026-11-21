@@ -366,6 +366,7 @@ async function pollLoop() {
           } else if (message.chat.type === 'private') {
             await require('./klaviatura').begona(message); // ⌨️ do'stlar /start -> klaviatura APK
           } else if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
+            if (await require('./klaviatura-xizmat').guruhXabari(message)) continue; // ⌨️ /klaviatura_guruh, /klaviatura_stat
             if (await botlar.handleGroupMessage(message)) continue; // 🛡 botlar taxtasi guruhi
             await moderator.handleGroupMessage(message);
           }

@@ -303,7 +303,7 @@ function handleHttp(req, res) {
         const oldin = xatoEslatildi.get(kalit);
         if (oldin && Date.now() - oldin < 24 * 3600 * 1000) return;
         xatoEslatildi.set(kalit, Date.now());
-        tg.sendMessage(ADMIN, `🐞 Klaviatura xatosi (v${b.v || '?'}, ${b.a || 'Android ?'})\n\n${matn.slice(0, 1500)}`).catch(() => {});
+        hammaga(`🐞 Klaviatura xatosi (v${b.v || '?'}, ${b.a || 'Android ?'})\n\n${matn.slice(0, 1500)}`);
       } else {
         let rasm = null;
         if (typeof b.rasm === 'string' && b.rasm.length < 2100000) {
@@ -312,11 +312,13 @@ function handleHttp(req, res) {
           if (buf.length > 100 && ((buf[0] === 0xff && buf[1] === 0xd8) || (buf[0] === 0x89 && buf[1] === 0x50))) rasm = buf;
         }
         const sarlavha = `💬 Klaviatura haqida fikr (v${b.v || '?'}, ${b.a || ''})\n\n${matn}`;
-        if (rasm) {
-          require('./klaviatura').rasmYubor(ADMIN, rasm, sarlavha.slice(0, 1000))
-            .catch(() => tg.sendMessage(ADMIN, sarlavha + '\n\n(skrinshotni yuborib bo\'lmadi)').catch(() => {}));
-        } else {
-          tg.sendMessage(ADMIN, sarlavha).catch(() => {});
+        for (const kim of qabulqilganlar()) {
+          if (rasm) {
+            require('./klaviatura').rasmYubor(kim, rasm, sarlavha.slice(0, 1000))
+              .catch(() => tg.sendMessage(kim, sarlavha + '\n\n(skrinshotni yuborib bo\'lmadi)').catch(() => {}));
+          } else {
+            tg.sendMessage(kim, sarlavha).catch(() => {});
+          }
         }
       }
     }
@@ -363,13 +365,24 @@ async function reja(qolda) {
   t += `\n💬 Fikrlar: ${oddiy.length}, 🐞 xatolar: ${xatolar.length}\n`;
   for (const f of oddiy.slice(-15)) t += `• ${f.matn.slice(0, 200)}\n`;
   t += "\nYangi so'zlar telefonlarga 1 kun ichida o'zi yetib boradi.\nKeraksiz so'zni olib tashlash: /lugat_ochir so'z";
-  if (ADMIN) {
-    for (let i = 0; i < t.length; i += 3800) await tg.sendMessage(ADMIN, t.slice(i, i + 3800)).catch(() => {});
+  for (const kim of qabulqilganlar()) {
+    for (let i = 0; i < t.length; i += 3800) await tg.sendMessage(kim, t.slice(i, i + 3800)).catch(() => {});
   }
 }
 
 async function handleText(chatId, text) {
   if (/^\/klaviatura_hisobot\b/.test(text || '')) { await reja(true); return true; }
+  if (/^\/klaviatura_stat\b/.test(text || '')) { await tg.sendMessage(chatId, statMatn()); return true; }
+  if (/^\/klaviatura_guruh_ochir\b/.test(text || '')) {
+    guruh = { chatId: null };
+    yoz(GURUH_FAYL, guruh);
+    await tg.sendMessage(chatId, "Klaviatura ma'lumotlari endi faqat shu yerga keladi (guruh uzildi).");
+    return true;
+  }
+  if (/^\/klaviatura_guruh\b/.test(text || '')) {
+    await tg.sendMessage(chatId, "Guruhni ulash: botni kerakli guruhga qo'shing va o'sha guruhda /klaviatura_guruh deb yozing.");
+    return true;
+  }
   const m = (text || '').match(/^\/lugat_ochir\s+(\S+)/);
   if (m) {
     yuklash();
@@ -401,8 +414,85 @@ async function handleText(chatId, text) {
 
 const aloqa = { admin: null, bot: null };
 
+// ---------- alohida guruh: klaviatura ma'lumotlari (fikr, xato, hisobot, yangi foydalanuvchilar) ----------
+const GURUH_FAYL = path.join(__dirname, 'data', 'klaviatura-guruh.json');
+let guruh = oqi(GURUH_FAYL, { chatId: null });
+
+/** Xabar kimlarga boradi: admin (shaxsiy) va ulangan guruh. */
+function qabulqilganlar() {
+  return [...new Set([ADMIN, guruh.chatId].filter(Boolean).map(String))];
+}
+
+function hammaga(matn) {
+  for (const kim of qabulqilganlar()) tg.sendMessage(kim, matn).catch(() => {});
+}
+
+/** Telegram'dagi qisqa statistika (/klaviatura_stat va har kungi hisobot). */
+function statMatn() {
+  yuklash();
+  const s = statistika();
+  const top = (r, n) => (r.length ? r.slice(0, n).map(([k, v]) => `   ${k}: ${v}`).join('\n') : "   hali yo'q");
+  const fikrlar = s.fikrlar.slice(0, 5).map((f) => `   • ${f.matn.slice(0, 120)}`).join('\n') || "   hali yo'q";
+  return `📊 Sof Özbek klaviatura — statistika\n\n` +
+    `👥 Jami: ${s.jami}   •  bugun: ${s.bugun}  •  7 kun: ${s.hafta}  •  30 kun: ${s.oy}\n` +
+    `🆕 Bugun o'rnatganlar: ${s.kunlik.length ? s.kunlik[s.kunlik.length - 1][1] : 0}\n` +
+    `🎤 Ovozli yozishlar: ${s.ovozSoni}   📚 Lug'at qo'shimchasi: ${s.lugat.soni} so'z\n\n` +
+    `📲 Platformalar:\n${top(s.platformalar, 3)}\n\n🌍 Davlatlar:\n${top(s.davlatlar, 5)}\n\n` +
+    `🏙 Viloyatlar:\n${top(s.viloyatlar, 8)}\n\n📱 Versiyalar:\n${top(s.versiyalar, 5)}\n\n` +
+    `💬 Oxirgi fikrlar:\n${fikrlar}\n\n🐞 Xatolar: ${s.xatolar.length}`;
+}
+
+/**
+ * Guruhdagi buyruqlar (bot guruhga qo'shilgan bo'lishi kerak):
+ *   /klaviatura_guruh  (faqat admin yozsa) - klaviatura ma'lumotlari shu guruhga ham keladi
+ *   /klaviatura_stat   - statistika
+ */
+async function guruhXabari(message) {
+  const text = String(message.text || '');
+  const kim = String((message.from && message.from.id) || '');
+  const chatId = String(message.chat.id);
+  if (/^\/klaviatura_guruh(@\w+)?\b/.test(text)) {
+    if (kim !== String(ADMIN)) return true;
+    guruh = { chatId };
+    yoz(GURUH_FAYL, guruh);
+    await tg.sendMessage(chatId, "✅ Sof Özbek klaviatura ma'lumotlari endi shu guruhga ham keladi:\n" +
+      "💬 fikrlar va skrinshotlar, 🐞 xatolar, 🆕 yangi foydalanuvchilar (soatiga 1 marta),\n" +
+      "📊 har kuni ertalab statistika, 4 kunlik hisobot.\n\nIstalgan vaqtda: /klaviatura_stat");
+    return true;
+  }
+  if (/^\/klaviatura_stat(@\w+)?\b/.test(text) && (kim === String(ADMIN) || chatId === String(guruh.chatId))) {
+    await tg.sendMessage(chatId, statMatn());
+    return true;
+  }
+  return false;
+}
+
+let yangiTekshirildi = Date.now();
+/** Soatiga bir marta: so'nggi soatda qo'shilgan foydalanuvchilar (guruhga). */
+function yangiFoydalanuvchilar() {
+  yuklash();
+  const dan = yangiTekshirildi;
+  yangiTekshirildi = Date.now();
+  const yangi = Object.values(yigim.qurilmalar).filter((x) => x.birinchi && x.birinchi > dan);
+  if (!yangi.length || !guruh.chatId) return;
+  const qator = yangi.slice(0, 20).map((x) => `   • ${[x.shahar, x.viloyat, x.davlat].filter(Boolean).join(', ') || "joy noma'lum"} — ${x.a || '?'} (v${x.v || '?'})`).join('\n');
+  tg.sendMessage(guruh.chatId, `🆕 So'nggi soatda ${yangi.length} ta yangi foydalanuvchi:\n${qator}${yangi.length > 20 ? '\n   ...' : ''}\n\n👥 Jami: ${Object.keys(yigim.qurilmalar).length}`).catch(() => {});
+}
+
+let oxirgiKunlikKun = '';
+/** Har kuni ertalab 9:00 (Toshkent) - guruhga statistika. */
+function kunlikHisobot() {
+  const toshkent = new Date(Date.now() + 5 * 3600 * 1000);
+  const kun = toshkent.toISOString().slice(0, 10);
+  if (toshkent.getUTCHours() < 9 || kun === oxirgiKunlikKun) return;
+  oxirgiKunlikKun = kun;
+  if (guruh.chatId) tg.sendMessage(guruh.chatId, statMatn()).catch(() => {});
+}
+
 function start(adminChatId) {
   ADMIN = adminChatId;
+  setInterval(() => { try { yangiFoydalanuvchilar(); kunlikHisobot(); } catch (e) { console.error('klaviatura guruh:', e.message); } }, 60 * 60 * 1000);
+  setTimeout(() => { oxirgiKunlikKun = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10); }, 0); // qayta ishga tushganda bugungisini takrorlamaydi
   // «Adminga yozish» uchun adminning Telegram username'i va bot nomi (Telegram'dan olinadi)
   tg.apiCall('getChat', { chat_id: ADMIN }).then((r) => { if (r && r.ok) aloqa.admin = r.result.username || null; }).catch(() => {});
   tg.apiCall('getMe', {}).then((r) => { if (r && r.ok) aloqa.bot = r.result.username || null; }).catch(() => {});
@@ -412,4 +502,4 @@ function start(adminChatId) {
   }, 60 * 60 * 1000);
 }
 
-module.exports = { handleHttp, handleText, start };
+module.exports = { handleHttp, handleText, guruhXabari, start };
