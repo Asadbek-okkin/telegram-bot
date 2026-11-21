@@ -252,7 +252,7 @@ function sozniOchir(s) {
 
 function handleHttp(req, res) {
   const url = req.url.split('?')[0].replace(/\/+$/, '');
-  const m = url.match(/\/klaviatura\/(sozlar|fikr|lugat|ovoz|aloqa|admin\/[a-z]+)$/);
+  const m = url.match(/\/klaviatura\/(sozlar|fikr|lugat|ovoz|aloqa|salom|admin\/[a-z]+)$/);
   if (!m) return false;
   yuklash();
   if (m[1].startsWith('admin/')) { adminHttp(req, res, m[1]); return true; }
@@ -273,6 +273,8 @@ function handleHttp(req, res) {
     if (!b || !Q_RE.test(String(b.q || ''))) return json(res, 400, { xato: "noto'g'ri so'rov" });
     const q = String(b.q);
     qurilmaBelgila(req, q, b.v, b.a);
+    // kunlik "salom": ilova ishlatilayotganini bildiradi (statistika shu bilan sanaladi)
+    if (m[1] === 'salom') { saqla(); return json(res, 200, { ok: true }); }
     if (m[1] === 'sozlar') {
       const sozlar = Array.isArray(b.s) ? b.s.slice(0, 300) : [];
       const qora = new Set(lugat.qora);
