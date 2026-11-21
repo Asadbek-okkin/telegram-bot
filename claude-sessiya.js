@@ -480,11 +480,20 @@ function bodyOqi(req, chegara = 100000) {
 function handleHttp(req, res, kalitTogri) {
   if (req.method !== 'POST') return false;
   const yol = req.url.split('?')[0].replace(/\/+$/, '');
-  const amal = ['/holat', '/vs-kut', '/vs-natija', '/rasm', '/rasm-yubor', '/kut'].find((a) => yol.endsWith(a));
+  const amal = ['/holat', '/vs-kut', '/vs-natija', '/rasm', '/rasm-yubor', '/fayl-yubor', '/kut'].find((a) => yol.endsWith(a));
   if (!amal) return false;
   if (!kalitTogri(req.headers['x-kalit'])) { res.writeHead(403); res.end(); return true; }
-  bodyOqi(req, amal === '/rasm-yubor' ? 15000000 : 100000).then((b) => {
+  bodyOqi(req, amal === '/rasm-yubor' || amal === '/fayl-yubor' ? 40000000 : 100000).then((b) => {
     try {
+      if (amal === '/fayl-yubor') { // kompyuterdagi Claude adminga tayyor faylni (exe, zip...) yuboradi: {fayl: base64, nomi, izoh}
+        const buf = Buffer.from(String(b.fayl || ''), 'base64');
+        const nomi = String(b.nomi || 'fayl.bin').replace(/[\r\n"\\/]/g, '_').slice(0, 100);
+        if (!buf.length) return json(res, 400, { ok: false, xato: "fayl yo'q" });
+        require('./klaviatura').hujjatYubor(CHAT_ID, buf, nomi, String(b.izoh || '').slice(0, 1024), 'sendDocument', 'document', 'application/octet-stream')
+          .then((r) => json(res, r && r.ok ? 200 : 500, { ok: !!(r && r.ok), xato: r && r.description }))
+          .catch((e) => json(res, 500, { ok: false, xato: e.message }));
+        return;
+      }
       if (amal === '/rasm-yubor') { // kompyuterdagi Claude adminga rasmli qo'llanma yuboradi: {rasm: base64, izoh}
         const buf = Buffer.from(String(b.rasm || ''), 'base64');
         if (buf.length < 100) return json(res, 400, { ok: false, xato: "rasm yo'q" });

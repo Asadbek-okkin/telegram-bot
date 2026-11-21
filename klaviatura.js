@@ -262,4 +262,4 @@ async function rasmYubor(chatId, buf, caption) {
   if (!res || !res.ok) throw new Error((res && res.description) || 'sendPhoto xato');
 }
 
-module.exports = { TUGMA, handleText, begona, handleCallback, start, faylYubor, rasmYubor };
+module.exports = { TUGMA, handleText, begona, handleCallback, start, faylYubor, rasmYubor, hujjatYubor };
