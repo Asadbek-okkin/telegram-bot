@@ -914,6 +914,13 @@ KOMPYUTER_BOTLAR = {
         "yoqish": [os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), r"D:\BoshqaruvPulti\dastur\pult.py", "--oynasiz"],
         "tiklash": True,
     },
+    "quietframes": {  # Quiet Frames Studio (@QuietFrames_bot): YouTube kanal + video agenti
+        "papka": r"D:\oltita-agent",
+        "belgi": "bot.main",
+        "log": r"D:\oltita-agent\data\bot.log",
+        "yoqish": [r"D:\oltita-agent\.venv\Scripts\pythonw.exe", "-m", "bot.main"],
+        "tiklash": True,
+    },
 }
 _toxtatilgan = set()  # bot orqali ataylab to'xtatilganlar - o'zi qayta yoqilmaydi
 _jim_sanoq = {}  # nom -> ketma-ket "ishlamayapti" tekshiruvlari
