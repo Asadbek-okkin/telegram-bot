@@ -61,8 +61,28 @@ function matn() {
     m += `\n\n🏗 Bu hafta qaysi loyiha qancha sarfladi:${holat.loyihalar.map((x, i) => `\n${['🥇', '🥈', '🥉'][i] || '•'} ${x.loyiha} — ${x.ulush.toFixed(0)}%`).join('')}`;
   }
   const daq = Math.round((Date.now() / 1000 - holat.vaqt) / 60);
-  m += `\n\n🕒 Yangilangan: ${daq < 2 ? 'hozirgina' : `${daq} daq. oldin`}`;
+  m += `\n\n🕒 Yangilangan: ${daq < 2 ? 'hozirgina' : eskiMatn(daq)}`;
+  if (daq > ESKI_DAQ) {
+    m += `\n⚠️ Bu ESKI ma'lumot: ofis kompyuteri o'chiq (limitni faqat u o'qiy oladi). Akkauntdan boshqalar ham foydalansa, `
+      + 'hozirgi haqiqiy foiz bundan KO\'P bo\'lishi mumkin. Kompyuter yongach 10 daqiqada yangilanadi.';
+  }
   return m;
+}
+
+const ESKI_DAQ = 20; // shundan eski ma'lumot - ogohlantirish bilan ko'rsatiladi
+function eskiMatn(daq) {
+  if (daq < 60) return `${daq} daq. oldin`;
+  if (daq < 1440) return `${Math.floor(daq / 60)} soat ${daq % 60} daq. oldin`;
+  return `${Math.floor(daq / 1440)} kun ${Math.floor((daq % 1440) / 60)} soat oldin`;
+}
+
+// Kompyuterdan HOZIR yangi o'lcham so'rash (kuzatuvchi claude_limit.py ni darhol ishga tushiradi)
+async function yangila() {
+  try {
+    const r = await require('./claude-sessiya').kuzatuvchigaBuyruq({ amal: 'limit' }, 40000);
+    if (r && r.ok && r.claude_limit) { keldi(r.claude_limit); return true; }
+  } catch {}
+  return false;
 }
 
 // "🤖 Claude Code" ro'yxati ostidagi bir qator
@@ -155,8 +175,21 @@ async function hisobotBuyruq(chatId, text) {
 async function handleText(chatId, text) {
   if (await hisobotBuyruq(chatId, text)) return true;
   if (!/^\/limit(@\w+)?$/i.test(String(text || '').trim()) && text !== '🤖 Claude limiti') return false;
-  await tg.sendMessage(chatId, matn());
+  await yuborYangi(chatId);
   return true;
+}
+
+// /limit va «📊 Limit»: avval kompyuterdan hozirgi foizni olib (bo'lsa), keyin ko'rsatadi
+async function yuborYangi(chatId, msgId, tugmalar) {
+  const eski = !holat || !holat.vaqt || Date.now() / 1000 - holat.vaqt > 120;
+  if (eski) {
+    const kut = '⏳ Hozirgi limit kompyuterdan so\'ralmoqda…';
+    if (msgId) await tg.editMessageText(chatId, msgId, kut).catch(() => {});
+    else msgId = (await tg.sendMessage(chatId, kut).catch(() => null) || {}).result?.message_id;
+    await yangila();
+  }
+  if (msgId) await tg.editMessageText(chatId, msgId, matn(), tugmalar ? { reply_markup: tugmalar } : {}).catch(() => {});
+  else await tg.sendMessage(chatId, matn(), tugmalar ? { reply_markup: tugmalar } : {});
 }
 
 function davriyTekshir() {
@@ -164,6 +197,8 @@ function davriyTekshir() {
     const s = hisobotSozlama();
     if (!s.daq || !holat.vaqt) return;
     if (Date.now() - (s.oxirgi || 0) < s.daq * 60000) return;
+    // kompyuter o'chiq - ma'lumot yangilanmagan: bir xil eski raqamni har soatda guruhga tashlamaymiz
+    if (Date.now() / 1000 - holat.vaqt > ESKI_DAQ * 60) return;
     const g = guruhOl();
     if (!g) return;
     s.oxirgi = Date.now();
@@ -180,4 +215,4 @@ function start(chatId, guruhFn) {
   setInterval(davriyTekshir, 60000);
 }
 
-module.exports = { keldi, matn, qisqa, handleText, start };
+module.exports = { keldi, matn, qisqa, handleText, start, yuborYangi, yangila };

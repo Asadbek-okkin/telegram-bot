@@ -1022,6 +1022,8 @@ def vs_tsikl():
                 r = {"ok": True, "ai": ai_holat()}
             elif amal == "bot":
                 r = kompyuter_bot_amal(str(b.get("nom", "")), str(b.get("qil", "")))
+            elif amal == "limit":  # 📊 botdan «hozirgi limit» so'raldi
+                r = limit_bilan_loyihalar()
             elif len(sid) != 36:
                 r = {"ok": False, "xato": "noto'g'ri sessiya"}
             elif b.get("amal") == "yop":
@@ -1187,10 +1189,24 @@ def loyiha_sarfi(boshi, n=5):
 _limit_oxirgi = 0
 
 
-def limit_yangila():
-    """hooks/claude_limit.py ni alohida jarayonda ishga tushiradi (10 daqiqada bir marta)."""
+def limit_bilan_loyihalar():
+    """Botdan so'ralganda: limitni darhol yangilab, loyiha ulushlari bilan qaytaradi."""
+    limit_yangila(majburiy=True)
+    lim = limit_oqi()
+    if not lim:
+        return {"ok": False, "xato": "limit o'qilmadi"}
+    try:
+        w = lim.get("seven_day") or {}
+        lim["loyihalar"] = loyiha_sarfi((w.get("tiklanadi") or time.time()) - 7 * 86400)
+    except Exception:
+        pass
+    return {"ok": True, "claude_limit": lim}
+
+
+def limit_yangila(majburiy=False):
+    """hooks/claude_limit.py ni alohida jarayonda ishga tushiradi (10 daqiqada bir marta; botdan so'ralsa - darrov)."""
     global _limit_oxirgi
-    if time.time() - _limit_oxirgi < 600:
+    if not majburiy and time.time() - _limit_oxirgi < 600:
         return
     _limit_oxirgi = time.time()
     try:

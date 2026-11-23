@@ -550,9 +550,8 @@ async function handleCallback(cq) {
   const msgId = cq.message.message_id;
   if (data === 'cs:limit') {
     await tg.answerCallbackQuery(cq.id);
-    await tg.editMessageText(CHAT_ID, msgId, require('./claude-limit').matn(), {
-      reply_markup: { inline_keyboard: [[{ text: '⬅️ Sessiyalar', callback_data: 'cs:yangila' }, { text: '🔄', callback_data: 'cs:limit' }]] },
-    });
+    await require('./claude-limit').yuborYangi(CHAT_ID, msgId, // kompyuterdan hozirgi foizni so'rab ko'rsatadi
+      { inline_keyboard: [[{ text: '⬅️ Sessiyalar', callback_data: 'cs:yangila' }, { text: '🔄', callback_data: 'cs:limit' }]] });
     return true;
   }
   if (data === 'cs:yangila') {

@@ -271,7 +271,7 @@ async function handleGroupMessage(message) {
     return true;
   }
   if (id === guruhId && buyruq === '/limit') {
-    await tg.sendMessage(id, require('./claude-limit').matn());
+    await require('./claude-limit').yuborYangi(id);
     return true;
   }
   if (id === guruhId && buyruq === '/statistika') {
