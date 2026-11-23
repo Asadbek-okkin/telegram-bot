@@ -330,4 +330,4 @@ function startKuzatuv(chatId) {
   }, OCHIQ_CHEGARA_MS);
 }
 
-module.exports = { KEYBOARD_ROWS, handleText, handleCallback, startKuzatuv };
+module.exports = { KEYBOARD_ROWS, handleText, handleCallback, startKuzatuv, holatMatni };

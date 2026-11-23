@@ -394,4 +394,9 @@ function start(chatId, buyruqFn) {
   }, 90 * 1000);
 }
 
-module.exports = { handleText, handleCallback, handleGroupMessage, kompyuterdanKeldi, start, guruhniOl, guruhHolati };
+// 🧠 AI yordamchi uchun: botlar holati (oxirgi tekshiruvdan, systemctl chaqirmasdan)
+function qisqaHolat() {
+  return 'Botlar: ' + BOTLAR.map((b) => `${b.nomi} ${oxirgiHolat[b.id] === true ? 'ishlayapti' : oxirgiHolat[b.id] === false ? "TO'XTAGAN" : "noma'lum"}`).join(', ');
+}
+
+module.exports = { handleText, handleCallback, handleGroupMessage, kompyuterdanKeldi, start, guruhniOl, guruhHolati, qisqaHolat };

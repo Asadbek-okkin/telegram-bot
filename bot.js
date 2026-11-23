@@ -211,12 +211,29 @@ function ishgaTushishXabari() {
   return `🟢 Bot ishga tushdi\n📦 Versiya: ${v.raqam} (${v.sana})`;
 }
 
+// 🧠 Shaxsiy yordamchi real holatni biladi: Claude hozir nima qilyapti, limit, kompyuter, botlar.
+// Har savolda yangidan yig'iladi (bir necha qator) - "nima qilyapsan?" deganda aniq javob beradi.
+function realHolat() {
+  const qism = [];
+  const qosh = (f) => { try { const t = f(); if (t) qism.push(t); } catch {} };
+  qosh(() => claudeSessiya.holatXulosa());
+  qosh(() => require('./claude-limit').qisqa());
+  qosh(() => kompyuter.holatMatni());
+  qosh(() => botlar.qisqaHolat());
+  const vaqt = new Date().toLocaleString('uz-UZ', { timeZone: 'Asia/Tashkent' });
+  return `\n\nHOZIRGI REAL HOLAT (${vaqt}, Toshkent vaqti) - faqat shu ma'lumotga tayanib gapir, to'qima:\n${qism.join('\n\n')}\n\n`
+    + "Asadbek \"nima qilyapsan\", \"Claude nima qilyapti\", \"ishlar qanday\" desa - yuqoridagi holatdan qisqa, aniq aytib ber: "
+    + "qaysi sessiya ishlayapti, hozir nima qilyapti (harakatlar), oxirgi natija, limit. Sen u bilan birga ishlaydigan "
+    + "jamoaning yordamchisisan (Claude Code kompyuterda kod yozadi, botlar jamoasi ishlaydi). Ma'lumot bo'lmasa - bo'lmasligini ayt.";
+}
+
 async function handleAiChat(text) {
   conversation.push({ role: 'user', content: text });
   if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
   try {
     // 🧠 miya.js: Gemini yoki /miya_ulash bilan ulangan yangi AI (Gemini kaliti bo'lmasa - eski Claude API)
-    const reply = gemini.API_KEY ? await require('./miya').fikrla(conversation, AI_SYSTEM_PROMPT) : await aiProvider.chat(conversation, AI_SYSTEM_PROMPT);
+    const tizim = AI_SYSTEM_PROMPT + realHolat();
+    const reply = gemini.API_KEY ? await require('./miya').fikrla(conversation, tizim) : await aiProvider.chat(conversation, tizim);
     conversation.push({ role: 'assistant', content: reply });
     if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
     await tg.sendMessage(CHAT_ID, reply);

@@ -710,9 +710,27 @@ async function handleMessage(message) {
 }
 
 // 2-bosqich (claude-savol ochiq savolni olmagan bo'lsa): oddiy matn so'nggi 60 daqiqadagi "ishni tugatdi" sessiyasiga.
+// Shaxsiy AI yordamchiga savol ("nima qilyapsan", "claude nima qilyapti", "holat qanday") - Claude sessiyasiga emas
+const YORDAMCHI_SAVOL = /(nima\s*(qilyap|ish\s*qilyap|bo'?lyap|gap)|qanday\s*ketyap|holat|limit|qaysi\s*sessiya|kompyuter\s*(yoniq|o'?chiq)|botlar\s*(qanday|ishlay))/i;
+
+// 🧠 AI yordamchi uchun real holat: Claude sessiyalari, ular hozir nima qilyapti (bot.js handleAiChat)
+function holatXulosa() {
+  const list = tartibli();
+  if (!list.length) return "Claude Code: hozir ochiq sessiya yo'q.";
+  return `Claude Code sessiyalari (${list.length} ta):\n` + list.map((s, i) => {
+    let q = `${i + 1}. «${nomi(s)}» (loyiha: ${s.loyiha}) - ${holatQisqa(s)}, oxirgi faollik ${qachon(s.oxirgi)}`;
+    if (s.holat === 'ishlayapti' && s.qadamlar && s.qadamlar.length) {
+      q += `\n   hozirgi harakatlar (${s.qadamSoni || s.qadamlar.length} ta): ${s.qadamlar.map((x) => x.m).join('; ')}`;
+    }
+    if (s.natija) q += `\n   oxirgi javobi (${qachon(s.natijaVaqt || s.oxirgi)}): ${mdTozala(s.natija).replace(/\s+/g, ' ').slice(0, 300)}`;
+    return q;
+  }).join('\n');
+}
+
 async function handleFallback(message) {
   const text = (message.text || '').trim();
   if (!text || text.startsWith('/') || /^\p{Extended_Pictographic}/u.test(text) || message.reply_to_message) return false;
+  if (YORDAMCHI_SAVOL.test(text) && text.length < 80) return false; // AI yordamchi javob beradi
   const s = Object.values(sessiyalar)
     .filter((x) => x.holat === 'tayyor' && x.bildirishVaqt && Date.now() - x.bildirishVaqt < 60 * 60 * 1000)
     .sort((a, b) => b.bildirishVaqt - a.bildirishVaqt)[0];
@@ -802,4 +820,4 @@ async function rasmCallback(cq, data, msgId) {
   return true;
 }
 
-module.exports = { KEYBOARD_ROWS, handleHttp, handleText, handleCallback, handleMessage, handleFallback, handlePhoto, kuzatuvchigaBuyruq };
+module.exports = { KEYBOARD_ROWS, handleHttp, handleText, handleCallback, handleMessage, handleFallback, handlePhoto, kuzatuvchigaBuyruq, holatXulosa };
