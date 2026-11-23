@@ -421,7 +421,26 @@ def rasmlarni_almashtir(matn):
         except Exception as e:
             return f"[rasm yuklab olinmadi: {e}]"
 
-    return re.sub(r"\[\[rasm:([0-9a-f]{16})\]\]", ozgar, matn)
+    matn = re.sub(r"\[\[rasm:([0-9a-f]{16})\]\]", ozgar, matn)
+
+    def fayl_ozgar(m):
+        # 📎 zip/pdf/docx... - ~/.claude/tg-sessiya/fayllar/<id>-<nomi> ga yuklanadi
+        try:
+            papka = os.path.join(HOLAT_PAPKA, "fayllar")
+            os.makedirs(papka, exist_ok=True)
+            yol = os.path.join(papka, m.group(1) + "-" + m.group(2))
+            if not os.path.exists(yol):
+                req = urllib.request.Request(SERVER + "/rasm", data=json.dumps({"id": m.group(1)}).encode("utf-8"),
+                                             headers={"Content-Type": "application/json", "X-Kalit": kalit()}, method="POST")
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    data = r.read()
+                with open(yol, "wb") as f:
+                    f.write(data)
+            return f"[Telegram'dan yuborilgan fayl - kompyuterga saqlandi: {yol} (zip bo'lsa ochib, ichini o'qing)]"
+        except Exception as e:
+            return f"[fayl yuklab olinmadi: {e}]"
+
+    return re.sub(r"\[\[fayl:([0-9a-f]{16}):([A-Za-z0-9._-]{1,80})\]\]", fayl_ozgar, matn)
 
 
 def telegram_matni(xabarlar):

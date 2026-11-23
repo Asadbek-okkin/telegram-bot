@@ -505,7 +505,8 @@ function handleHttp(req, res, kalitTogri) {
       if (amal === '/holat') return json(res, 200, holatKeldi(b));
       if (amal === '/rasm') { // kompyuterdagi hook Telegram'dan kelgan rasmni yuklab oladi
         const id = String(b.id || '');
-        const f = path.join(RASM_PAPKA, `${id}.jpg`);
+        let f = path.join(RASM_PAPKA, `${id}.jpg`);
+        if (!fs.existsSync(f)) f = path.join(RASM_PAPKA, `${id}.bin`); // 📎 rasm bo'lmagan fayl
         if (!/^[0-9a-f]{16}$/.test(id) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
         res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
         return res.end(fs.readFileSync(f));
@@ -720,7 +721,13 @@ function rasmFaylId(message) {
   if (message.photo && message.photo.length) return message.photo[message.photo.length - 1].file_id;
   const d = message.document;
   if (d && /^image\//.test(d.mime_type || '')) return d.file_id;
+  // 📎 boshqa fayllar (zip, pdf, docx...) ham sessiyaga boradi; .b3d - Bazis shifrlashniki
+  if (d && !/\.b3d$/i.test(d.file_name || '')) return d.file_id;
   return null;
+}
+
+function rasmmi(message) {
+  return !!((message.photo && message.photo.length) || (message.document && /^image\//.test(message.document.mime_type || '')));
 }
 
 async function rasmniSessiyaga(s, message) {
@@ -730,8 +737,19 @@ async function rasmniSessiyaga(s, message) {
     try { if (fs.statSync(path.join(RASM_PAPKA, f)).mtimeMs < eski) fs.unlinkSync(path.join(RASM_PAPKA, f)); } catch {}
   }
   const id = require('crypto').randomBytes(8).toString('hex');
-  fs.writeFileSync(path.join(RASM_PAPKA, `${id}.jpg`), await tg.faylYukla(rasmFaylId(message)));
   const izoh = (message.caption || '').trim();
+  if (!rasmmi(message)) {
+    const d = message.document;
+    if ((d.file_size || 0) > 20 * 1024 * 1024) {
+      await tg.sendMessage(CHAT_ID, "📎 Fayl 20 MB dan katta — Telegram bot uni yuklab ololmaydi. Kichikroq qilib (yoki bo'lib) yuboring.", { reply_to_message_id: message.message_id });
+      return;
+    }
+    const faylNomi = String(d.file_name || 'fayl.bin').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80) || 'fayl.bin';
+    fs.writeFileSync(path.join(RASM_PAPKA, `${id}.bin`), await tg.faylYukla(d.file_id));
+    await yubor(s, `${izoh || "(izohsiz fayl - ichini ochib, nima kerakligini tushunib oling)"}\n[[fayl:${id}:${faylNomi}]]`, message);
+    return;
+  }
+  fs.writeFileSync(path.join(RASM_PAPKA, `${id}.jpg`), await tg.faylYukla(rasmFaylId(message)));
   await yubor(s, `${izoh || "(izohsiz rasm - rasmga qarab nima kerakligini tushunib oling)"}\n[[rasm:${id}]]`, message);
 }
 
@@ -748,8 +766,8 @@ async function handlePhoto(message, kanalga) {
   kutilganRasmlar.set(kalit, { message, kanalga, vaqt: Date.now() });
   for (const [k, v] of kutilganRasmlar) if (Date.now() - v.vaqt > 3600 * 1000) kutilganRasmlar.delete(k);
   const q = list.slice(0, 8).map((x, i) => [{ text: `🤖 ${i + 1}. ${qisqart(nomi(x), 34)}`, callback_data: `cs:rs:${kalit}:${x.sid.slice(0, 12)}` }]);
-  q.push([{ text: '📢 Kanalga post', callback_data: `cs:rk:${kalit}` }]);
-  await tg.sendMessage(CHAT_ID, '🖼 Bu rasm qayerga? Claude sessiyasini tanlang:', { reply_to_message_id: message.message_id, reply_markup: { inline_keyboard: q } });
+  if (rasmmi(message)) q.push([{ text: '📢 Kanalga post', callback_data: `cs:rk:${kalit}` }]);
+  await tg.sendMessage(CHAT_ID, rasmmi(message) ? '🖼 Bu rasm qayerga? Claude sessiyasini tanlang:' : '📎 Bu fayl qaysi Claude sessiyasiga?', { reply_to_message_id: message.message_id, reply_markup: { inline_keyboard: q } });
   return true;
 }
 
@@ -769,7 +787,7 @@ async function rasmCallback(cq, data, msgId) {
   }
   const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));
   if (!s) { await tg.editMessageText(CHAT_ID, msgId, 'Bu sessiya yopilgan, rasm yuborilmadi.'); return true; }
-  await tg.editMessageText(CHAT_ID, msgId, `🖼 → ${nomi(s)}`);
+  await tg.editMessageText(CHAT_ID, msgId, `${rasmmi(k.message) ? '🖼' : '📎'} → ${nomi(s)}`);
   await rasmniSessiyaga(s, k.message);
   return true;
 }
