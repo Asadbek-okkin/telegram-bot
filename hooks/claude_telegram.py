@@ -279,7 +279,10 @@ def mavzu(inp):
 CLAUDE_PAPKA = os.path.join(os.path.expanduser("~"), ".claude")
 
 
-def jarayon_tirikmi(pid):
+def jarayon_tirikmi(pid, boshlangan=None):
+    """boshlangan - sessions/<pid>.json dagi procStart (FILETIME). Windows PID'ni qayta ishlatadi:
+    eski sessiya fayli yopilgan Claude'ning PID'ini endi boshqa dastur (python.exe...) olgan bo'lsa,
+    jarayon yaratilgan vaqti mos kelmaydi - sessiya o'lik deb hisoblanadi (botda ortiqcha sessiya ko'rinmaydi)."""
     try:
         k32 = ctypes.windll.kernel32
         h = k32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
@@ -287,8 +290,13 @@ def jarayon_tirikmi(pid):
             return False
         kod = ctypes.c_ulong()
         ok = k32.GetExitCodeProcess(h, ctypes.byref(kod))
+        tirik = bool(ok) and kod.value == 259  # STILL_ACTIVE
+        if tirik and boshlangan:
+            t = [ctypes.c_ulonglong() for _ in range(4)]
+            if k32.GetProcessTimes(h, *(ctypes.byref(x) for x in t)):
+                tirik = abs(t[0].value - int(boshlangan)) < 20_000_000  # 2 soniya
         k32.CloseHandle(h)
-        return bool(ok) and kod.value == 259  # STILL_ACTIVE
+        return tirik
     except Exception:
         return True
 
@@ -310,7 +318,7 @@ def jonli_sessiyalar():
             continue
         if d.get("kind") not in (None, "interactive") or not d.get("sessionId"):
             continue
-        if not jarayon_tirikmi(d.get("pid", 0)):
+        if not jarayon_tirikmi(d.get("pid", 0), d.get("procStart")):
             continue
         sid = d["sessionId"]
         tr = ""
