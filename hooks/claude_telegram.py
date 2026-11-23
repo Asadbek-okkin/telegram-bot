@@ -148,6 +148,60 @@ def qisqa(s, n):
     return s if len(s) <= n else s[:n] + "…"
 
 
+# 🔧 Claude harakatlari (VS Code panelidagi "tool call" lar kabi) - botda jonli ko'rinadi
+AMAL_BELGI = {"Bash": "💻", "PowerShell": "💻", "Edit": "✏️", "Write": "📝", "Read": "👁", "Grep": "🔎", "Glob": "📂",
+              "WebFetch": "🌐", "WebSearch": "🌐", "Agent": "🤖", "Task": "🤖", "Skill": "🧩", "NotebookEdit": "✏️",
+              "TodoWrite": "📋", "AskUserQuestion": "❓"}
+
+
+def amal_tavsifi(nom, ti):
+    ti = ti if isinstance(ti, dict) else {}
+    fayl = ti.get("file_path") or ti.get("notebook_path") or ""
+    if nom in ("Bash", "PowerShell"):
+        d = ti.get("description") or (ti.get("command") or "").split("\n")[0]
+    elif fayl:
+        d = os.path.basename(str(fayl))
+    elif nom in ("Grep", "Glob"):
+        d = ti.get("pattern", "")
+    elif nom in ("WebFetch",):
+        d = ti.get("url", "")
+    elif nom in ("WebSearch",):
+        d = ti.get("query", "")
+    elif nom in ("Agent", "Task"):
+        d = ti.get("description", "")
+    elif nom == "Skill":
+        d = ti.get("skill", "")
+    else:
+        d = ""
+    nom_q = nom.split("__")[-1] if nom.startswith("mcp__") else nom
+    return {"b": AMAL_BELGI.get(nom, "🔧"), "m": qisqa(f"{nom_q} — {d}" if d else nom_q, 80)}
+
+
+def qadam_qosh(sid, nom, ti):
+    """Harakatni ~/.claude/tg-sessiya/<sid>.qadam ga qo'shadi -> (oxirgi 6 ta, jami soni)."""
+    f = holat_fayl(sid, "qadam")
+    try:
+        with open(f, encoding="utf-8") as h:
+            d = json.load(h)
+    except Exception:
+        d = {"soni": 0, "q": []}
+    d["soni"] = d.get("soni", 0) + 1
+    d["q"] = (d.get("q", []) + [amal_tavsifi(nom, ti)])[-6:]
+    try:
+        with open(f, "w", encoding="utf-8") as h:
+            json.dump(d, h, ensure_ascii=False)
+    except Exception:
+        pass
+    return d["q"], d["soni"]
+
+
+def qadamlar_tozala(sid):
+    try:
+        os.remove(holat_fayl(sid, "qadam"))
+    except Exception:
+        pass
+
+
 def asbob_tafsiloti(nom, ti):
     if not isinstance(ti, dict):
         return qisqa(ti, 1500)
@@ -478,7 +532,8 @@ def rejim_holat(inp):
                 os.remove(holat_fayl(sid, "tg"))
             except Exception:
                 pass
-        holat_yubor(inp, "ishlayapti")
+        qadamlar_tozala(sid)  # yangi topshiriq - harakatlar ro'yxati yangidan
+        holat_yubor(inp, "ishlayapti", qadamlar=[], qadam_soni=0)
     elif hodisa == "SessionEnd":
         kutishni_toxtat(sid)
         holat_yubor(inp, "tugadi", timeout=3)
@@ -489,6 +544,7 @@ def rejim_holat(inp):
         elif tur == "idle_prompt":
             holat_yubor(inp, "tayyor")
     elif hodisa == "PostToolUse":
+        qadamlar, soni = qadam_qosh(sid, inp.get("tool_name", ""), inp.get("tool_input"))  # har harakat yoziladi
         f = holat_fayl(sid, "yurak")
         try:
             if time.time() - os.path.getmtime(f) < YURAK_S:
@@ -496,7 +552,8 @@ def rejim_holat(inp):
         except OSError:
             pass
         open(f, "w").close()
-        xabarlar = holat_yubor(inp, "ishlayapti", inp.get("tool_name", ""), ol=True, timeout=4)
+        xabarlar = holat_yubor(inp, "ishlayapti", inp.get("tool_name", ""), ol=True, timeout=4,
+                               qadamlar=qadamlar[-6:], qadam_soni=soni)
         if xabarlar:
             telegramdan_belgila(sid)
             chiqar({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": telegram_matni(xabarlar)}})

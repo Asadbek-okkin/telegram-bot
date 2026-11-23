@@ -129,6 +129,7 @@ function karta(s) {
   } else {
     m += '\n\n📄 Hali natija yo\'q.';
   }
+  if (s.holat === 'ishlayapti') m += harakatlarMatni(s);
   if (s.navbat && s.navbat.length) m += `\n\n📨 ${s.navbat.length} ta xabaringiz yetkazilishini kutyapti.`;
   m += '\n\n✍️ Shu yerga yozing — xabaringiz shu sessiyaga boradi.';
   return m;
@@ -162,8 +163,13 @@ function vaqtMatni(ms) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+function harakatlarMatni(s) {
+  if (!s.qadamlar || !s.qadamlar.length) return '';
+  return `\n\n🔧 Harakatlar (${s.qadamSoni || s.qadamlar.length} ta):\n${s.qadamlar.map((q) => `${q.b} ${q.m}`).join('\n')}`;
+}
+
 function jarayonMatni(s, n, j, i) {
-  return `${NUQTALAR[i % 2]} Claude ishlayapti… ${vaqtMatni(Date.now() - j.boshlandi)}\n📁 ${s.mavzu || s.loyiha}\n\n💬 ${qisqaMatn(n.matn)}`;
+  return `${NUQTALAR[i % 2]} Claude ishlayapti… ${vaqtMatni(Date.now() - j.boshlandi)}\n📁 ${s.mavzu || s.loyiha}\n\n💬 ${qisqaMatn(n.matn)}${harakatlarMatni(s)}`;
 }
 
 function jarayonTugat(sid, s) {
@@ -402,6 +408,11 @@ function holatKeldi(b) {
   if (b.holat) s.holat = b.holat;
   s.izoh = b.izoh ? String(b.izoh).slice(0, 80) : '';
   s.oxirgi = Date.now();
+  // 🔧 Claude'ning oxirgi harakatlari (VS Code panelidagidek): [{b: belgi, m: matn}] + jami soni
+  if (Array.isArray(b.qadamlar)) {
+    s.qadamlar = b.qadamlar.slice(-6).map((q) => ({ b: String((q && q.b) || '🔧').slice(0, 4), m: String((q && q.m) || '').slice(0, 90) }));
+    s.qadamSoni = Number(b.qadam_soni) || s.qadamlar.length;
+  }
   if (b.xabar) { s.natija = String(b.xabar).slice(-20000); s.natijaVaqt = Date.now(); }
   sessiyalar[sid] = s;
   // Claude javobini yubordi (tayyor/kutyapti + natija) — avvalgi «ishlayapti» xabarlari «✅ Bajarildi» bo'ladi;
