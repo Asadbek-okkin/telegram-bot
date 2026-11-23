@@ -65,7 +65,30 @@ async function fikrla(messages, tizim) {
       console.error('miya (yangi AI) xato, Gemini ishlatildi:', e.message);
     }
   }
-  return gemini.chat(messages, tizim);
+  try {
+    return await gemini.chat(messages, tizim); // ichida bir nechta bepul Gemini modeli navbat bilan
+  } catch (e) {
+    // Gemini bepul limiti tugadi/ishlamadi - bepul zaxira AI'lar (/miya_zaxira), yordamchi to'xtab qolmasin
+    for (const z of s.zaxiralar || []) {
+      try {
+        const m = await openaiMos(z, messages, tizim);
+        if (e.kvota) ogohlantir(`⚠️ Gemini bepul limiti tugadi — AI yordamchi hozir zaxira «${z.nomi}» bilan ishlayapti.`);
+        return m;
+      } catch (e2) {
+        console.error(`miya zaxira ${z.nomi}:`, e2.message);
+      }
+    }
+    if (e.kvota) ogohlantir("⚠️ AI yordamchining bepul limiti tugadi (Gemini). 30 daqiqadan keyin qayta urinadi.\n"
+      + "To'xtab qolmasligi uchun bepul zaxira AI qo'shing: /miya_zaxira (masalan Groq yoki OpenRouter bepul kaliti).");
+    throw e;
+  }
+}
+
+let oxirgiOgoh = 0;
+function ogohlantir(matn) {
+  if (Date.now() - oxirgiOgoh < 6 * 3600 * 1000) return; // 6 soatda bir martadan ko'p emas
+  oxirgiOgoh = Date.now();
+  tg.sendMessage(process.env.PM_TELEGRAM_CHAT_ID || '313364362', matn).catch(() => {});
 }
 
 function nomi() {
@@ -80,8 +103,40 @@ async function handleText(chatId, text) {
       + "Yangi AI ulash:\n/miya_ulash Nomi | https://manzil/v1 | model | kalit\n(OpenAI'ga mos chat/completions API)\nGemini'ga qaytish: /miya_gemini");
     return true;
   }
+  if (/^\/miya_zaxira\b/i.test(t)) {
+    const [nom, url, model, kalit] = t.replace(/^\/miya_zaxira\s*/i, '').split('|').map((x) => (x || '').trim());
+    const s = sozlama();
+    if (!nom) {
+      const z = (s.zaxiralar || []).map((x, i) => `${i + 1}. ${x.nomi} (${x.model})`).join('\n') || "— yo'q";
+      await tg.sendMessage(chatId, `🛟 Zaxira AI'lar (Gemini limiti tugasa navbat bilan):\n${z}\n\nQo'shish: /miya_zaxira Nomi | https://manzil/v1 | model | kalit\n`
+        + "Bepul variantlar: Groq (console.groq.com → API key; https://api.groq.com/openai/v1 | llama-3.3-70b-versatile), "
+        + "OpenRouter (openrouter.ai → keys; https://openrouter.ai/api/v1 | ':free' bilan tugaydigan model).\nHammasini o'chirish: /miya_zaxira tozala");
+      return true;
+    }
+    if (/^tozala$/i.test(nom)) {
+      s.zaxiralar = [];
+      saqla(s);
+      await tg.sendMessage(chatId, '🗑 Zaxira AI\'lar o\'chirildi.');
+      return true;
+    }
+    if (!/^https?:\/\//.test(url || '') || !model) {
+      await tg.sendMessage(chatId, 'Format: /miya_zaxira Nomi | https://manzil/v1 | model | kalit');
+      return true;
+    }
+    const z = { nomi: nom, url, model, kalit: kalit || '' };
+    try {
+      await openaiMos(z, [{ role: 'user', content: 'Salom' }], 'Bitta so\'z bilan javob ber.');
+    } catch (e) {
+      await tg.sendMessage(chatId, `❌ ${nom} ishlamadi: ${e.message}`);
+      return true;
+    }
+    s.zaxiralar = [...(s.zaxiralar || []).filter((x) => x.nomi !== nom), z].slice(0, 5);
+    saqla(s);
+    await tg.sendMessage(chatId, `✅ «${nom}» zaxira sifatida qo'shildi. Gemini limiti tugasa AI yordamchi shu bilan davom etadi.\nKalitli xabaringizni o'chirib qo'ying.`);
+    return true;
+  }
   if (/^\/miya_gemini$/i.test(t)) {
-    saqla({ tur: 'gemini' });
+    saqla({ tur: 'gemini', zaxiralar: sozlama().zaxiralar || [] });
     await tg.sendMessage(chatId, '🧠 Miya: Google Gemini ga qaytarildi.');
     return true;
   }
@@ -91,7 +146,7 @@ async function handleText(chatId, text) {
       await tg.sendMessage(chatId, "Format: /miya_ulash Nomi | https://manzil/v1 | model | kalit\nMisol: /miya_ulash Bizning AI | https://ai.inok.uz/v1 | asad-1 | sk-...");
       return true;
     }
-    const s = { tur: 'openai', nomi: nom, url, model, kalit: kalit || '' };
+    const s = { tur: 'openai', nomi: nom, url, model, kalit: kalit || '', zaxiralar: sozlama().zaxiralar || [] };
     await tg.sendMessage(chatId, `⏳ ${nom} sinab ko'rilmoqda…`);
     try {
       const javob = await openaiMos(s, [{ role: 'user', content: "Salom! Bir gapda o'zingni tanishtir." }], "O'zbek tilida qisqa javob ber.");

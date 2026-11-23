@@ -14,7 +14,33 @@ function toGeminiContents(messages) {
   }));
 }
 
-function chat(messages, systemInstruction) {
+// Har bir Gemini modelining bepul limiti ALOHIDA: biri tugasa (429) yoki yo'q bo'lsa (404) keyingisiga o'tamiz.
+// Hammasi tugasa - xato.kvota = true (miya.js egasini ogohlantiradi).
+const MODELLAR = [...new Set([MODEL, ...(process.env.PM_GEMINI_MODELS
+  || 'gemini-3-flash-preview,gemini-3.1-flash-lite-preview,gemini-2.5-flash,gemini-2.5-flash-lite').split(',').map((x) => x.trim()).filter(Boolean)])];
+const chetda = {}; // model -> shu vaqtgacha ishlatilmaydi (limit tugagan)
+
+async function chat(messages, systemInstruction) {
+  let oxirgi = null;
+  let kvota = 0;
+  for (const m of MODELLAR) {
+    if ((chetda[m] || 0) > Date.now()) { kvota += 1; continue; }
+    try {
+      return await chatModel(m, messages, systemInstruction);
+    } catch (e) {
+      oxirgi = e;
+      if (e.kod === 429) { chetda[m] = Date.now() + 30 * 60 * 1000; kvota += 1; continue; }
+      if (e.kod === 404) { chetda[m] = Date.now() + 24 * 3600 * 1000; continue; }
+      if (e.kod >= 500) continue;
+      throw e;
+    }
+  }
+  const x = oxirgi || new Error('Gemini: hech bir model ishlamadi');
+  if (kvota) x.kvota = true;
+  throw x;
+}
+
+function chatModel(model, messages, systemInstruction) {
   return new Promise((resolve, reject) => {
     if (!API_KEY) { reject(new Error("PM_GEMINI_API_KEY o'rnatilmagan")); return; }
     const body = JSON.stringify({
@@ -24,7 +50,7 @@ function chat(messages, systemInstruction) {
     const req = https.request(
       {
         hostname: 'generativelanguage.googleapis.com',
-        path: `/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
+        path: `/v1beta/models/${model}:generateContent?key=${API_KEY}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -37,7 +63,12 @@ function chat(messages, systemInstruction) {
         res.on('end', () => {
           try {
             const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-            if (parsed.error) { reject(new Error(parsed.error.message || 'Gemini API xato')); return; }
+            if (parsed.error) {
+              const e = new Error(parsed.error.message || 'Gemini API xato');
+              e.kod = parsed.error.code || res.statusCode;
+              reject(e);
+              return;
+            }
             const candidate = (parsed.candidates || [])[0];
             const text = candidate && candidate.content && candidate.content.parts
               ? candidate.content.parts.map((p) => p.text || '').join('')
