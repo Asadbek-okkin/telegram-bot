@@ -95,17 +95,28 @@ function holatTugmalari() {
       [{ text: '🔄 Qayta tekshirish', callback_data: 'pc:yangila' }],
     ] };
   }
-  const qator = pc.ochirish
-    ? [{ text: "✖ O'chirishni bekor qilish", callback_data: 'pc:bekor' }]
-    : [{ text: "⏻ O'chirish", callback_data: 'pc:ochir?' }];
-  const dasturQatorlari = pc.dasturlar
-    ? Object.keys(DASTUR_NOMI).map((d) => [pc.dasturlar[d]
-      ? { text: `✖ ${DASTUR_NOMI[d]} — yopish`, callback_data: `pc:d:${d}:yop` }
-      : { text: `▶ ${DASTUR_NOMI[d]} — yoqish`, callback_data: `pc:d:${d}:yoq` }])
+  // Tartib: dasturlar (2 tadan) → Claude/AI Studio → ⚡ quvvat (yoqish · qayta yuklash · o'chirish, alohida qator) → yangilash
+  const QISQA = { yandex: 'Yandex', telegram: 'Telegram', bazis: 'Bazis', '1c': '1C' };
+  const dasturlar = pc.dasturlar
+    ? Object.keys(DASTUR_NOMI).map((d) => (pc.dasturlar[d]
+      ? { text: `🟢 ${QISQA[d] || DASTUR_NOMI[d]} ✖`, callback_data: `pc:d:${d}:yop` }
+      : { text: `⚪ ${QISQA[d] || DASTUR_NOMI[d]} ▶`, callback_data: `pc:d:${d}:yoq` }))
     : [];
-  const vsQator = [{ text: '🧩 VS Code — Claude sessiyalari', callback_data: 'cs:vs' }]; // claude-sessiya.js
-  const aiQator = [{ text: '🎨 AI Studio — yoqish / o\'chirish', callback_data: 'cs:ai' }]; // claude-sessiya.js
-  return { inline_keyboard: [...dasturQatorlari, vsQator, aiQator, qator, [{ text: '🔄 Yangilash', callback_data: 'pc:yangila' }]] };
+  const dasturQatorlari = [];
+  for (let i = 0; i < dasturlar.length; i += 2) dasturQatorlari.push(dasturlar.slice(i, i + 2));
+  const quvvat = pc.ochirish
+    ? [{ text: "✖ O'chirish/qayta yuklashni bekor qilish", callback_data: 'pc:bekor' }]
+    : [
+      { text: '⚡ Yoqish', callback_data: 'pc:yoq' },
+      { text: '🔁 Qayta yuklash', callback_data: 'pc:qayta?' },
+      { text: "⏻ O'chirish", callback_data: 'pc:ochir?' },
+    ];
+  return { inline_keyboard: [
+    ...dasturQatorlari,
+    [{ text: '🧩 VS Code', callback_data: 'cs:vs' }, { text: '🎨 AI Studio', callback_data: 'cs:ai' }], // claude-sessiya.js
+    quvvat,
+    [{ text: '🔄 Yangilash', callback_data: 'pc:yangila' }],
+  ] };
 }
 
 // ---------------------------------------------------------------- agent bilan aloqa (HTTP)
@@ -145,9 +156,11 @@ async function natijaKeldi(n) {
   yuborilgan.delete(n.id);
   if (n.ok && b.amal === 'ochir') statistika.qayd('pc_ochirish');
   if (n.ok && b.amal === 'dastur') statistika.qayd('pc_dastur');
-  if (b.amal === 'ochir') {
+  if (b.amal === 'ochir' || b.amal === 'qayta') {
     if (n.ok) {
-      await tg.editMessageText(b.chatId, b.msgId, `⏻ Kompyuter ${n.kechikish} soniyadan keyin o'chadi.\nO'chgach bot o'zi xabar beradi.`, {
+      await tg.editMessageText(b.chatId, b.msgId, b.amal === 'qayta'
+        ? `🔁 Kompyuter ${n.kechikish} soniyadan keyin qayta yuklanadi.\nQayta yongach bot o'zi xabar beradi.`
+        : `⏻ Kompyuter ${n.kechikish} soniyadan keyin o'chadi.\nO'chgach bot o'zi xabar beradi.`, {
         reply_markup: { inline_keyboard: [[{ text: '✖ Bekor qilish', callback_data: 'pc:bekor' }]] },
       });
     } else {
@@ -266,6 +279,32 @@ async function handleCallback(cq) {
         [{ text: "Yo'q", callback_data: 'pc:yangila' }],
       ],
     });
+  } else if (data === 'pc:qayta?') {
+    await tg.answerCallbackQuery(cq.id);
+    await tahrir("Kompyuter qayta yuklansinmi (perezagruzka)?\nOchiq dasturlardagi saqlanmagan ishlar yo'qoladi. Kompyuter 1-2 daqiqada qayta yonadi.", {
+      inline_keyboard: [
+        [{ text: '🔁 Ha, 1 daqiqadan keyin', callback_data: 'pc:qayta:60' }, { text: '🔁 Ha, hozir', callback_data: 'pc:qayta:5' }],
+        [{ text: "Yo'q", callback_data: 'pc:yangila' }],
+      ],
+    });
+  } else if (data.startsWith('pc:qayta:')) {
+    if (!yoniqmi()) {
+      await tg.answerCallbackQuery(cq.id, { text: "Kompyuter o'chiq" });
+      await tahrir(holatMatni(), holatTugmalari());
+      return true;
+    }
+    const kechikish = parseInt(data.split(':')[2], 10) || 60;
+    await tg.answerCallbackQuery(cq.id, { text: 'Buyruq yuborildi' });
+    await tahrir('⏳ Qayta yuklash buyrug\'i kompyuterga yuborildi...');
+    // foydalanuvchi sessiyasidagi kuzatuvchi orqali (Windows'ga kirilgan bo'lsa), bo'lmasa - SYSTEM agent
+    const r = await claudeSessiya.kuzatuvchigaBuyruq({ amal: 'qayta_yukla', qil: String(kechikish) }, 30000);
+    if (r && r.ok) {
+      statistika.qayd('pc_ochirish');
+      await tahrir(`🔁 Kompyuter ${kechikish} soniyadan keyin qayta yuklanadi.\nQayta yongach bot o'zi xabar beradi.`,
+        { inline_keyboard: [[{ text: '✖ Bekor qilish', callback_data: 'pc:bekor' }]] });
+    } else {
+      buyruqYubor({ amal: 'qayta', kechikish, chatId, msgId });
+    }
   } else if (data.startsWith('pc:d:')) {
     if (!yoniqmi()) {
       await tg.answerCallbackQuery(cq.id, { text: "Kompyuter o'chiq" });

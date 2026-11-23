@@ -86,11 +86,12 @@ def holat_json():
     }
 
 
-def ochir(kechikish):
+def ochir(kechikish, qayta=False):
     kechikish = max(0, min(int(kechikish), 3600))
     subprocess.run(["shutdown", "/a"], capture_output=True, creationflags=NO_WINDOW)  # eski rejani almashtiramiz
-    r = subprocess.run(["shutdown", "/s", "/f", "/t", str(kechikish), "/c",
-                        "Telegram bot orqali o'chirilmoqda. Bekor qilish: botdagi 'Bekor qilish' tugmasi."],
+    r = subprocess.run(["shutdown", "/r" if qayta else "/s", "/f", "/t", str(kechikish), "/c",
+                        "Telegram bot orqali " + ("qayta yuklanmoqda" if qayta else "o'chirilmoqda")
+                        + ". Bekor qilish: botdagi 'Bekor qilish' tugmasi."],
                        capture_output=True, text=True, creationflags=NO_WINDOW)
     if r.returncode == 0:
         holat["ochirish_vaqti"] = time.time() + kechikish
@@ -155,6 +156,8 @@ def bajar(buyruq):
         r = dastur(buyruq.get("nom"), buyruq.get("qil"))
     elif amal == "ochir":
         r = ochir(buyruq.get("kechikish", 60))
+    elif amal == "qayta":  # 🔁 qayta yuklash (perezagruzka)
+        r = ochir(buyruq.get("kechikish", 60), qayta=True)
     elif amal == "bekor":
         r = bekor()
     else:

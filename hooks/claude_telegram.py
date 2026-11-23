@@ -776,6 +776,11 @@ def ai_yoq():
 
 def ai_ochir():
     import subprocess
+    try:  # «o'chirilgan» belgisi — AI Studio qo'riqchisi (har 5 daq) uni qayta yoqmasin; yoqilganda server o'zi o'chiradi
+        with open(os.path.join(AI_PAPKA, "malumot", "OCHIRILGAN"), "w", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M"))
+    except Exception:
+        pass
     for pid in ai_jarayonlar():
         subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], capture_output=True, creationflags=NO_WINDOW)
     for _ in range(10):
@@ -1031,6 +1036,14 @@ def vs_tsikl():
                 r = kompyuter_bot_amal(str(b.get("nom", "")), str(b.get("qil", "")))
             elif amal == "limit":  # 📊 botdan «hozirgi limit» so'raldi
                 r = limit_bilan_loyihalar()
+            elif amal == "qayta_yukla":  # 🔁 kompyuterni qayta yuklash (Windows'ga kirgan foydalanuvchi nomidan)
+                import subprocess
+                k = max(5, min(int(str(b.get("qil") or "60")), 3600))
+                subprocess.run(["shutdown", "/a"], capture_output=True, creationflags=NO_WINDOW)
+                p = subprocess.run(["shutdown", "/r", "/f", "/t", str(k), "/c",
+                                    "Telegram bot orqali qayta yuklanmoqda. Bekor qilish: botdagi 'Bekor qilish'."],
+                                   capture_output=True, creationflags=NO_WINDOW)
+                r = {"ok": p.returncode == 0, "xato": "" if p.returncode == 0 else f"kod {p.returncode}"}
             elif len(sid) != 36:
                 r = {"ok": False, "xato": "noto'g'ri sessiya"}
             elif b.get("amal") == "yop":
