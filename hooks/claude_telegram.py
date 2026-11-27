@@ -911,12 +911,20 @@ KOMPYUTER_BOTLAR = {
         "yoqish": [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "KameraAI", "KameraAI.exe"), "--oynasiz", "--fon"],
         "tiklash": True,
     },
-    "pult": {  # Control Pult (BoshqaruvPulti): boti pult.py ichida ishlaydi; oynasiz (--oynasiz) yoqiladi
+    "pult": {  # Control Pult (BoshqaruvPulti) serveri: pult.py, oynasiz (--oynasiz) yoqiladi
         "papka": r"D:\BoshqaruvPulti\dastur",
         "cmd": r"*BoshqaruvPulti\dastur\pult.py*",  # tizim Python'i bilan ishlaydi - buyruq qatori bo'yicha topiladi
         "belgi": "pult.py",
         "log": os.path.join(r"D:\BoshqaruvPulti\dastur", "zakaz_avto_" + os.environ.get("COMPUTERNAME", "") + ".log"),
         "yoqish": [os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), r"D:\BoshqaruvPulti\dastur\pult.py", "--oynasiz"],
+        "tiklash": True,
+    },
+    "pult_bot": {  # @Control Pult TELEGRAM BOTI - alohida jarayon: bot_xizmat.py (u ishlamasa bot /start ga ham jim)
+        "papka": r"D:\BoshqaruvPulti\dastur",
+        "cmd": r"*BoshqaruvPulti\dastur\bot_xizmat.py*",
+        "belgi": "bot_xizmat.py",
+        "log": r"D:\BoshqaruvPulti\malumot\bot.log",
+        "yoqish": [os.path.join(os.path.dirname(sys.executable), "pythonw.exe"), r"D:\BoshqaruvPulti\dastur\bot_xizmat.py"],
         "tiklash": True,
     },
     "quietframes": {  # Quiet Frames Studio (@QuietFrames_bot): YouTube kanal + video agenti
@@ -980,6 +988,11 @@ def kompyuter_botlar_holati():
             except Exception:
                 pass
         natija[nom] = {"ishlayapti": ish, "log": log_dumi(c["log"])}
+    # 🛡 Botlar'dagi "Control Pult" = server (pult.py) VA Telegram boti (bot_xizmat.py) - ikkalasi ishlasa 🟢
+    if "pult" in natija and "pult_bot" in natija:
+        b = natija.pop("pult_bot")
+        natija["pult"] = {"ishlayapti": natija["pult"]["ishlayapti"] and b["ishlayapti"],
+                          "log": (b["log"] or "")[-1500:] + "\n— pult —\n" + (natija["pult"]["log"] or "")[-1500:]}
     return natija
 
 
