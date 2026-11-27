@@ -561,7 +561,7 @@ async function handleCallback(cq) {
     await tg.editMessageText(CHAT_ID, msgId, matn, { reply_markup: tugmalar(list) });
     return true;
   }
-  if (data.startsWith('cs:rs:') || data.startsWith('cs:rk:')) return rasmCallback(cq, data, msgId);
+  if (data.startsWith('cs:rs:') || data.startsWith('cs:rk:') || data.startsWith('cs:ra:')) return rasmCallback(cq, data, msgId);
   if (data === 'cs:ai') {
     yozishSid = null;
     await tg.answerCallbackQuery(cq.id);
@@ -789,12 +789,13 @@ async function handlePhoto(message, kanalga) {
   if (!s && yozishSid) s = sessiyalar[yozishSid];
   if (s) { await rasmniSessiyaga(s, message); return true; }
   const list = tartibli();
-  if (!list.length) return false;
+  if (!list.length && !rasmmi(message)) return false;
   const kalit = String(message.message_id);
   kutilganRasmlar.set(kalit, { message, kanalga, vaqt: Date.now() });
   for (const [k, v] of kutilganRasmlar) if (Date.now() - v.vaqt > 3600 * 1000) kutilganRasmlar.delete(k);
   const q = list.slice(0, 8).map((x, i) => [{ text: `🤖 ${i + 1}. ${qisqart(nomi(x), 34)}`, callback_data: `cs:rs:${kalit}:${x.sid.slice(0, 12)}` }]);
-  if (rasmmi(message)) q.push([{ text: '📢 Kanalga post', callback_data: `cs:rk:${kalit}` }]);
+  // Claude sessiyasi bo'lmasa ham rasm darrov kanalga ketmasin: AI yordamchi ko'rib javob beradi yoki kanal posti
+  if (rasmmi(message)) q.push([{ text: '🧠 AI yordamchi ko\'rib bersin', callback_data: `cs:ra:${kalit}` }, { text: '📢 Kanalga post', callback_data: `cs:rk:${kalit}` }]);
   await tg.sendMessage(CHAT_ID, rasmmi(message) ? '🖼 Bu rasm qayerga? Claude sessiyasini tanlang:' : '📎 Bu fayl qaysi Claude sessiyasiga?', { reply_to_message_id: message.message_id, reply_markup: { inline_keyboard: q } });
   return true;
 }
@@ -811,6 +812,19 @@ async function rasmCallback(cq, data, msgId) {
   if (tur === 'rk') {
     await tg.editMessageText(CHAT_ID, msgId, '📢 Kanal postiga yuborildi.');
     await k.kanalga(k.message);
+    return true;
+  }
+  if (tur === 'ra') { // 🧠 AI yordamchi rasmni ko'rib, izohdagi savolga javob beradi (Gemini vision)
+    await tg.editMessageText(CHAT_ID, msgId, '🧠 AI yordamchi rasmni ko\'ryapti…');
+    try {
+      const buf = await tg.faylYukla(rasmFaylId(k.message));
+      const savol = (k.message.caption || '').trim() || "Rasmda nima bor? Muammo bo'lsa, sababi va yechimini ayt.";
+      const javob = await require('./gemini-api').rasmSavol(buf, 'image/jpeg', savol,
+        "Sen Asadbekning shaxsiy AI yordamchisisan. Rasmni diqqat bilan ko'rib, o'zbek tilida aniq va amaliy javob ber. Markdown ishlatma.");
+      await tg.editMessageText(CHAT_ID, msgId, `🧠 ${mdTozala(javob || "Javob bo'lmadi.").slice(0, 4000)}`);
+    } catch (e) {
+      await tg.editMessageText(CHAT_ID, msgId, `🤷 Rasmni ko'rib bo'lmadi: ${e.message}`);
+    }
     return true;
   }
   const s = Object.values(sessiyalar).find((x) => x.sid.startsWith(bosh));

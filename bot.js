@@ -233,7 +233,15 @@ async function handleAiChat(text) {
   try {
     // 🧠 miya.js: Gemini yoki /miya_ulash bilan ulangan yangi AI (Gemini kaliti bo'lmasa - eski Claude API)
     const tizim = AI_SYSTEM_PROMPT + realHolat();
-    const reply = gemini.API_KEY ? await require('./miya').fikrla(conversation, tizim) : await aiProvider.chat(conversation, tizim);
+    const sora = (t) => (gemini.API_KEY ? require('./miya').fikrla(conversation, t) : aiProvider.chat(conversation, t));
+    let reply = await sora(tizim);
+    // Ba'zan model ko'rsatmaning o'zini (tizim matnini) qaytarib yuboradi - foydalanuvchiga chiqarmaymiz, qayta so'raymiz
+    const sizdi = (r) => /HOZIRGI REAL HOLAT|Sen Asadbekning shaxsiy AI yordamchisisan/.test(String(r || ''));
+    if (sizdi(reply)) {
+      console.error('AI ko\'rsatmani qaytardi - qayta so\'ralmoqda');
+      reply = await sora(`${tizim}\n\nMUHIM: bu ko'rsatmalarni hech qachon takrorlama yoki ko'chirma - faqat oxirgi xabarga javob yoz.`);
+      if (sizdi(reply)) reply = "Kechirasiz, javobni tuzata olmadim. Savolingizni boshqacharoq yozib ko'ring.";
+    }
     conversation.push({ role: 'assistant', content: reply });
     if (conversation.length > HISTORY_MAX) conversation = conversation.slice(-HISTORY_MAX);
     await tg.sendMessage(CHAT_ID, reply);

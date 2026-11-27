@@ -71,7 +71,17 @@ function commandArg(text) {
   return idx === -1 ? '' : text.slice(idx + 1).trim();
 }
 
-function groqChat(messages, maxTokens) {
+// Groq ishlamasa (kalit eskirgan "Invalid API Key", limit) - 🧠 miya.js (Gemini + zaxiralar) bilan davom etadi
+async function groqChat(messages, maxTokens) {
+  try {
+    return await groqChatToza(messages, maxTokens);
+  } catch (e) {
+    console.error('moderator Groq xato, miya.js ishlatildi:', e.message);
+    return require('./miya').fikrla(messages, "Faqat so'ralgan matnni yoz. Markdown ishlatma.");
+  }
+}
+
+function groqChatToza(messages, maxTokens) {
   return new Promise((resolve, reject) => {
     if (!GROQ_API_KEY) { reject(new Error("PM_GROQ_API_KEY o'rnatilmagan")); return; }
     const body = JSON.stringify({ model: GROQ_MODEL, messages, max_tokens: maxTokens });

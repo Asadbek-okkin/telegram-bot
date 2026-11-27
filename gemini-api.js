@@ -10,7 +10,7 @@ const MODEL = process.env.PM_GEMINI_MODEL || 'gemini-2.5-flash';
 function toGeminiContents(messages) {
   return messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+    parts: m.parts || [{ text: m.content }], // m.parts - rasm kabi tayyor qismlar (rasmSavol)
   }));
 }
 
@@ -120,4 +120,9 @@ function transkript(audioBuffer, mime) {
   });
 }
 
-module.exports = { API_KEY, chat, transkript };
+// 🖼 Rasmga qarab savolga javob (skrinshot tahlili) - bepul modellar navbati bilan
+function rasmSavol(buf, mime, savol, tizim) {
+  return chat([{ role: 'user', parts: [{ inline_data: { mime_type: mime || 'image/jpeg', data: buf.toString('base64') } }, { text: savol }] }], tizim);
+}
+
+module.exports = { API_KEY, chat, transkript, rasmSavol };
