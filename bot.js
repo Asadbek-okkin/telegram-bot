@@ -88,7 +88,18 @@ function mainKeyboard() {
       ['🏛 Majlis', BOSHQA_TUGMA],
     ],
     resize_keyboard: true,
+    is_persistent: true, // kompyuterdagi Telegram'da ham tugmalar yig'ilib yo'qolib qolmasin
   };
+}
+
+// «Меню» tugmasidagi buyruqlar: tugmalar yo'qolsa /start ularni qaytaradi
+function buyruqlarniOrnat() {
+  tg.apiCall('setMyCommands', { commands: [
+    { command: 'start', description: '🏠 Tugmalarni qaytarish (asosiy menyu)' },
+    { command: 'limit', description: '📊 Claude limiti' },
+    { command: 'miya', description: '🧠 AI yordamchi holati' },
+    { command: 'jamoa', description: '🤝 Botlar jamoasi' },
+  ] }).catch(() => {});
 }
 
 function boshqaKeyboard() {
@@ -100,6 +111,7 @@ function boshqaKeyboard() {
       [ORQAGA_TUGMA],
     ],
     resize_keyboard: true,
+    is_persistent: true,
   };
 }
 
@@ -284,7 +296,8 @@ async function handleText(text) {
       await handleSelfUpdate();
       return;
     case '/start':
-      await tg.sendMessage(CHAT_ID, 'Bot tayyor! Pastdagi tugmalardan foydalaning.', { reply_markup: mainKeyboard() });
+    case '/menu':
+      await tg.sendMessage(CHAT_ID, '🏠 Asosiy menyu — tugmalar pastda 👇', { reply_markup: mainKeyboard() });
       return;
   }
   if (awaitingIdea) {
@@ -347,6 +360,7 @@ async function pollLoop() {
   kompyuter.startKuzatuv(CHAT_ID);
   botlar.start(CHAT_ID, claudeSessiya.kuzatuvchigaBuyruq);
   yangiVersiyaKuzat();
+  buyruqlarniOrnat();
   require('./claude-limit').start(CHAT_ID, botlar.guruhniOl);
   agentlar.start(CHAT_ID, botlar.guruhniOl, botlar.guruhHolati); // 🏛 kunlik majlis
   require('./klaviatura').start(CHAT_ID); // ⌨️ klaviatura yangi versiyasini obunachilarga yuboradi
